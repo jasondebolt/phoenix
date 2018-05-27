@@ -1,0 +1,11 @@
+{
+  "Parameters": {
+    "InstanceType": "m5.large",
+    "IPWhitelist": "10.0.0.0/8",
+    "VPCPrefix": "dev",
+    "Scheme": "internal",
+    "WebSubnets": "Private",
+    "DnsPrefix": "jenkins",
+    "SnapshotId": ""
+  }
+}

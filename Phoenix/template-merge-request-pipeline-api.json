@@ -1,0 +1,245 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description" : "Deploys an API Gateway endpoint that GitLab merge request events can invoke to setup/teardown a review pipeline.",
+  "Parameters": {
+    "ProjectName": {
+      "Description": "The name of the project.",
+      "Type": "String"
+    },
+    "Environment": {
+      "Description": "The environment (dev, testing, prod, etc.) to deploy to.",
+      "Type": "String"
+    },
+    "Version": {
+      "Description": "The identifier/version associated with this API.",
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "Latest": {
+      "Type": "AWS::ApiGateway::Deployment",
+      "DependsOn": ["MergeRequestsPost"],
+      "Properties": {
+        "RestApiId": {"Ref": "RestAPI"},
+        "Description": "Description here",
+        "StageDescription": {
+          "Description": "Stage Description",
+          "LoggingLevel": "INFO",
+          "MetricsEnabled": "true",
+          "Variables": {
+            "TestKey": "hello"
+          }
+        },
+        "StageName": {
+          "Fn::Join": [
+            "_",
+            [
+              {
+                "Ref": "Environment"
+              },
+              {"Ref": "Version"}
+            ]
+          ]
+        }
+      }
+    },
+    "RestAPI": {
+      "Type" : "AWS::ApiGateway::RestApi",
+      "Properties" : {
+        "Description" : {"Fn::Join": ["", [
+          "The ",
+          { "Ref": "ProjectName" },
+          " GitLab Merge Request ",
+          " REST API (Release Candidate ",
+          {"Ref": "Version"},
+          ")"
+        ]]},
+        "Name" : { "Fn::Join": ["-",  [
+          { "Ref": "ProjectName" },
+          "api",
+          "mergerequests",
+          { "Ref": "Environment" }
+        ]]}
+      }
+    },
+    "MergeRequestsResource": {
+      "Type" : "AWS::ApiGateway::Resource",
+      "Properties" : {
+        "ParentId" : { "Fn::GetAtt": ["RestAPI", "RootResourceId"] },
+        "PathPart" : "MergeRequests",
+        "RestApiId" : { "Ref": "RestAPI" }
+      }
+    },
+    "MergeRequestsPost": {
+      "Type" : "AWS::ApiGateway::Method",
+      "DependsOn": ["LambdaMergeRequests"],
+      "Properties" : {
+        "RestApiId" : { "Ref": "RestAPI" },
+        "AuthorizationType" : "NONE",
+        "HttpMethod": "POST",
+        "ResourceId" : { "Ref": "MergeRequestsResource" },
+        "MethodResponses": [
+          {
+            "StatusCode": "200",
+            "ResponseParameters": {
+              "method.response.header.Access-Control-Allow-Origin": false
+            }
+          }
+        ],
+        "Integration": {
+          "Type" : "AWS",
+          "IntegrationHttpMethod": "POST",
+          "IntegrationResponses": [
+            {
+              "ResponseParameters": {
+                "method.response.header.Access-Control-Allow-Origin": "'*'"
+              },
+              "ResponseTemplates" : { "application/json": "" },
+              "StatusCode" : "200"
+            }
+          ],
+          "Uri": {"Fn::Join": ["", [
+            "arn:aws:apigateway:",
+            { "Ref": "AWS::Region" },
+            ":lambda:path/2015-03-31/functions/",
+            { "Fn::GetAtt": [
+              "LambdaMergeRequests",
+              "Arn"
+            ]},
+            "/invocations"
+          ]]}
+        }
+      }
+    },
+    "LambdaMergeRequests": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": ["LambdaRole", "LambdaRolePolicy"],
+      "Properties": {
+        "Handler": "lambda_function.lambda_handler",
+        "Role": { "Fn::GetAtt" : ["LambdaRole", "Arn"] },
+        "Code": {
+          "S3Bucket" : {
+            "Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                {"Ref": "ProjectName"},
+                "microservice",
+                "MicroserviceBucketName"
+              ]]
+            }
+          },
+          "S3Key" : {"Fn::Join": ["/", [
+            "lambda",
+            {"Ref": "Version"},
+            "mergerequests",
+            "lambda_function.zip"
+          ]]}
+        },
+        "Runtime": "python3.6",
+        "Timeout": "25"
+      }
+    },
+    "LambdaMergeRequestsInvokePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": [ "LambdaMergeRequests", "Arn" ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "apigateway.amazonaws.com"
+      }
+    },
+    "LambdaRole": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "sts:AssumeRole"
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "lambda.amazonaws.com",
+                  "s3.amazonaws.com",
+                  "apigateway.amazonaws.com",
+                  "codepipeline.amazonaws.com",
+                  "codebuild.amazonaws.com"
+                ]
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        }
+      },
+      "Type": "AWS::IAM::Role"
+    },
+    "LambdaRolePolicy": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "lambda:*",
+                "dynamodb:*",
+                "cloudformation:*",
+                "codepipeline:*",
+                "codebuild:*",
+                "s3:*",
+                "logs:*",
+                "xray:*",
+                "sts:AssumeRole",
+                "iam:PassRole",
+                "iam:GetRole"
+              ],
+              "Effect": "Allow",
+              "Resource": "*"
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "PolicyName": { "Fn::Join": ["-", [
+          { "Ref": "ProjectName"},
+          "APILambdaRole"
+        ]]},
+        "Roles": [
+          {
+            "Ref": "LambdaRole"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::Policy"
+    }
+  },
+  "Outputs": {
+    "MergeRequestsURL": {
+      "Export": {
+        "Name": {
+          "Fn::Join": ["-", [
+            {"Ref": "ProjectName"},
+            "mr-api",
+            {"Ref": "Environment"},
+            "MergeRequestsURL"
+          ]]
+        }
+      },
+      "Value": {
+        "Fn::Join": ["", [
+          "https://",
+          {"Ref": "RestAPI"},
+          ".",
+          "execute-api",
+          ".",
+          {"Ref": "AWS::Region"},
+          ".",
+          "amazonaws.com",
+          "/",
+          {"Ref": "Environment"},
+          "_",
+          {"Ref": "Version"},
+          "/",
+          "MergeRequests"
+        ]]
+      }
+    }
+  }
+}

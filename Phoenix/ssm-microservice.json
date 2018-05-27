@@ -1,0 +1,357 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Microservice project SSM parameters.",
+  "Parameters": {
+    "OrganizationName": {
+      "Description": "The name of your organization.",
+      "MinLength": "1",
+      "MaxLength": "6",
+      "AllowedPattern": "^[a-z]+[\\-a-z0-9]*[a-z0-9]+",
+      "ConstraintDescription": "User all lowercase, dashes, or numbers (my-org) between 1 and 6 characters in length. Must not start with a number, and must not start or end with a dash.",
+      "Type": "String"
+    },
+    "ProjectName": {
+      "Description": "The name of your project.",
+      "MinLength": "1",
+      "MaxLength": "20",
+      "AllowedPattern": "^[a-z]+[\\-a-z0-9]*[a-z0-9]+",
+      "ConstraintDescription": "User all lowercase, dashes, or numbers (demo-project) between 1 and 20 characters in length. Must not start with a number, and must not start or end with a dash.",
+      "Type": "String"
+    },
+    "CodeBuildDockerImage": {
+      "Description": "The ECR name (i.e '{account_id}.dkr.ecr.us-east-1.amazonaws.com/{image_name}:0.1.0') to biuld the image with.",
+      "Default": "aws/codebuild/ubuntu-base:14.04",
+      "Type": "String"
+    },
+    "CodeBuildBucketName": {
+      "Description": "The bucket name in which CodeBuild artifacts will be stored.",
+      "Type": "String",
+      "Default": ""
+    },
+    "CodePipelineBucketName": {
+      "Description": "The bucket name in which CodePipeline artifacts will be stored.",
+      "Type": "String",
+      "Default": ""
+    },
+    "MicroserviceBucketName": {
+      "Description": "The bucket name in which cloudformation templates and lambda functions will be stored.",
+      "Type": "String",
+      "Default": ""
+    },
+    "JenkinsBackupBucketName": {
+      "Description": "The bucket name in which jenkins backups and restores are saved to",
+      "Type": "String",
+      "Default": ""
+    },
+    "Domain": {
+      "Description": "The domain name that this service will fall under.",
+      "Type": "String"
+    },
+    "SSLCertificateARN": {
+      "Description": "The AWS ACM Certificate ARN.",
+      "Type": "String"
+    },
+    "HostedZoneId": {
+      "Description": "The Route53 hosted zone id that this service will fall under.",
+      "Type": "String"
+    },
+    "KeyPairName":{
+      "Type":"AWS::EC2::KeyPair::KeyName",
+      "Description":"Name of an existing EC2 KeyPair to enable SSH access to the ECS instances."
+    },
+    "LambdaBucketName": {
+      "Description": "The bucket name in which Lambda artifacts will be stored.",
+      "Type": "String",
+      "Default": ""
+    },
+    "LoadBalancerLogsBucketName": {
+      "Description": "The bucket name in which load balancer logs will be stored.",
+      "Type": "String",
+      "Default": ""
+    },
+    "SecretsBucketName": {
+      "Description": "The bucket name in which KMS encrypted secrets will be stored.",
+      "Type": "String",
+      "Default": ""
+    },
+    "EncryptionKeyName": {
+      "Description": "The name of the encryption key used by the microservice to encrypt/decrypt secrets.",
+      "Type": "String",
+      "Default": ""
+    },
+    "ProjectDescription": {
+      "Description": "A description of your project",
+      "Type": "String"
+    },
+    "NotificationEmail": {
+      "Description": "The email to send notifications to for this microservice",
+      "Type": "String"
+    },
+    "IAMRole": {
+      "Description": "The IAM role that has access to all of the projects resources.",
+      "Type": "String"
+    }
+  },
+  "Conditions": {
+    "HasCodeBuildBucketName" : {"Fn::Not": [
+      {"Fn::Equals" : [
+        {"Ref" : "CodeBuildBucketName"}, ""
+      ]}
+    ]},
+    "HasCodePipelineBucketName" : {"Fn::Not": [
+      {"Fn::Equals" : [
+        {"Ref" : "CodePipelineBucketName"}, ""
+      ]}
+    ]},
+    "HasMicroserviceBucketName" : {"Fn::Not": [
+      {"Fn::Equals" : [
+        {"Ref" : "MicroserviceBucketName"}, ""
+      ]}
+    ]},
+    "HasJenkinsBackupBucketName" : {"Fn::Not": [
+      {"Fn::Equals" : [
+        {"Ref" : "JenkinsBackupBucketName"}, ""
+      ]}
+    ]},
+    "HasLambdaBucketName" : {"Fn::Not": [
+      {"Fn::Equals" : [
+        {"Ref" : "LambdaBucketName"}, ""
+      ]}
+    ]},
+    "HasLoadBalancerLogsBucketName" : {"Fn::Not": [
+      {"Fn::Equals" : [
+        {"Ref" : "LoadBalancerLogsBucketName"}, ""
+      ]}
+    ]},
+    "HasSecretsBucketName" : {"Fn::Not": [
+      {"Fn::Equals" : [
+        {"Ref" : "SecretsBucketName"}, ""
+      ]}
+    ]},
+    "HasEncryptionKeyName" : {"Fn::Not": [
+      {"Fn::Equals" : [
+        {"Ref" : "EncryptionKeyName"}, ""
+      ]}
+    ]}
+  },
+  "Resources": {
+    "ProjectNameParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-project-name",
+        "Type": "String",
+        "Value": {"Ref": "ProjectName"},
+        "AllowedPattern": "^[a-z]+[\\-a-z0-9]*[a-z0-9]+",
+        "Description": "The microservice name associated with this account"
+      }
+    },
+    "CodeBuildDockerImageParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-code-build-docker-image",
+        "Type": "String",
+        "Value": {"Ref": "CodeBuildDockerImage"},
+        "Description": "The ECR name (i.e '{account_id}.dkr.ecr.us-east-1.amazonaws.com/{image_name}:0.1.0') to biuld the image with."
+      }
+    },
+    "CodeBuildBucketNameParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-code-build-bucket-name",
+        "Type": "String",
+        "Value": {"Fn::If": [
+          "HasCodeBuildBucketName",
+          {"Ref": "CodeBuildBucketName"},
+          {"Fn::Join": ["-", [
+            {"Ref": "OrganizationName"},
+            {"Ref": "ProjectName"},
+            "code-build"
+          ]]}
+        ]},
+        "Description": "The bucket name in which CodeBuild artifacts will be stored."
+      }
+    },
+    "CodePipelineBucketNameParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-code-pipeline-bucket-name",
+        "Type": "String",
+        "Value": {"Fn::If": [
+          "HasCodePipelineBucketName",
+          {"Ref": "CodePipelineBucketName"},
+          {"Fn::Join": ["-", [
+            {"Ref": "OrganizationName"},
+            {"Ref": "ProjectName"},
+            "code-pipeline"
+          ]]}
+        ]},
+        "Description": "The bucket name in which CodePipeline artifacts will be stored."
+      }
+    },
+    "MicroserviceBucketNameParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-bucket-name",
+        "Type": "String",
+        "Value": {"Fn::If": [
+          "HasMicroserviceBucketName",
+          {"Ref": "MicroserviceBucketName"},
+          {"Fn::Join": ["-", [
+            {"Ref": "OrganizationName"},
+            {"Ref": "ProjectName"},
+            "microservice"
+          ]]}
+        ]},
+        "Description": "The bucket name in which cloudformation templates and lambda functions will be stored."
+      }
+    },
+    "JenkinsBackupBucketNameParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-jenkins-backup-bucket-name",
+        "Type": "String",
+        "Value": {"Fn::If": [
+          "HasJenkinsBackupBucketName",
+          {"Ref": "JenkinsBackupBucketName"},
+          {"Fn::Join": ["-", [
+            {"Ref": "OrganizationName"},
+            {"Ref": "ProjectName"},
+            "jenkins"
+          ]]}
+        ]},
+        "Description": "The bucket name in which jenkins backups and restores are saved to"
+      }
+    },
+    "DomainParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-domain",
+        "Type": "String",
+        "Value": {"Ref": "Domain"},
+        "Description": "The domain name that this service will fall under."
+      }
+    },
+    "SSLCertificateARNParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-ssl-certificate-arn",
+        "Type": "String",
+        "Value": {"Ref": "SSLCertificateARN"},
+        "Description": "The AWS ACM Certificate ARN."
+      }
+    },
+    "HostedZoneIdParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-hosted-zone-id",
+        "Type": "String",
+        "Value": {"Ref": "HostedZoneId"},
+        "Description": "The Route53 hosted zone id that this service will fall under."
+      }
+    },
+    "KeyPairNameParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-key-pair-name",
+        "Type": "String",
+        "Value": {"Ref": "KeyPairName"},
+        "Description":"Name of an existing EC2 KeyPair to enable SSH access to the ECS instances."
+      }
+    },
+    "LambdaBucketNameParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-lambda-bucket-name",
+        "Type": "String",
+        "Value": {"Fn::If": [
+          "HasLambdaBucketName",
+          {"Ref": "LambdaBucketName"},
+          {"Fn::Join": ["-", [
+            {"Ref": "OrganizationName"},
+            {"Ref": "ProjectName"},
+            "lambda"
+          ]]}
+        ]},
+        "Description": "The bucket name in which Lambda artifacts will be stored."
+      }
+    },
+    "LoadBalancerLogsBucketNameParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-load-balancer-logs-bucket-name",
+        "Type": "String",
+        "Value": {"Fn::If": [
+          "HasLoadBalancerLogsBucketName",
+          {"Ref": "LoadBalancerLogsBucketName"},
+          {"Fn::Join": ["-", [
+            {"Ref": "OrganizationName"},
+            {"Ref": "ProjectName"},
+            "load-balancer-logs"
+          ]]}
+        ]},
+        "Description": "The bucket name in which load balancer logs will be stored."
+      }
+    },
+    "SecretsBucketNameParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-secrets-bucket-name",
+        "Type": "String",
+        "Value": {"Fn::If": [
+          "HasSecretsBucketName",
+          {"Ref": "SecretsBucketName"},
+          {"Fn::Join": ["-", [
+            {"Ref": "OrganizationName"},
+            {"Ref": "ProjectName"},
+            "encrypted-secrets"
+          ]]}
+        ]},
+        "Description": "The bucket name in which KMS encrypted secrets will be stored."
+      }
+    },
+    "EncryptionKeyNameParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-encryption-key-name",
+        "Type": "String",
+        "Value": {"Fn::If": [
+          "HasEncryptionKeyName",
+          {"Ref": "EncryptionKeyName"},
+          {"Fn::Join": ["-", [
+            {"Ref": "OrganizationName"},
+            {"Ref": "ProjectName"},
+            "kms-key"
+          ]]}
+        ]},
+        "Description": "The name of the encryption key used by the microservice to encrypt/decrypt secrets."
+      }
+    },
+    "ProjectDescriptionParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-project-description",
+        "Type": "String",
+        "Value": {"Ref": "ProjectDescription"},
+        "Description": "A description of your project."
+      }
+    },
+    "NotificationEmailParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-notification-email",
+        "Type": "String",
+        "Value": {"Ref": "NotificationEmail"},
+        "Description": "The email to send notifications to for this microservice"
+      }
+    },
+    "IAMRoleParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-iam-role",
+        "Type": "String",
+        "Value": {"Ref": "IAMRole"},
+        "Description": "The IAM role that has access to all of the projects resources."
+      }
+    }
+  }
+}

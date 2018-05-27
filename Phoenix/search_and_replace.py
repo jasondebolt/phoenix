@@ -40,6 +40,11 @@ def find_files(dir_path=None, patterns=None):
 def search_and_replace(directory, find, replace, filePattern=None):
     for filename in find_files(directory, filePattern):
         print('Attempting to replace content in filename ' + filename)
+        if (filename.endswith('.png') or
+            filename.endswith('.jpg') or
+            filename.endswith('.jpeg') or
+            filename.endswith('.svg')):
+            return
         with open(filename) as f:
             s_old = f.read()
         s_new = s_old.replace(find, replace)

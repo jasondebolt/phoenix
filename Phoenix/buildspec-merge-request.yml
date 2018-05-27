@@ -12,16 +12,22 @@ phases:
       - echo Logging in to Amazon ECR...
       - aws --version
       - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
-      - PROJECT_NAME=`jq -r '.Parameters.ProjectName' template-microservice-params.json`
-      - LAMBDA_BUCKET_NAME=`jq -r '.Parameters.LambdaBucketName' template-microservice-params.json`
+      - PROJECT_NAME=`jq -r '.Parameters.ProjectName' $CODEBUILD_SRC_DIR/Phoenix/template-microservice-params.json`
+      - PRE_LAMBDA_BUCKET_NAME=`jq -r '.Parameters.LambdaBucketName' $CODEBUILD_SRC_DIR/Phoenix/template-microservice-params.json`
+      - LAMBDA_BUCKET_NAME=`echo $PRE_LAMBDA_BUCKET_NAME | sed "s/PROJECT_NAME/$PROJECT_NAME/g"`
       - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$PROJECT_NAME
       - VERSION_ID=v_$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=$VERSION_ID
   build:
     commands:
       - echo Build started on `date`
-      - echo Running unit tests on source code...
-      - #sbt test
+      - # Docker/ECS
+      - echo ===== DOCKER BUILD =====
+      - echo Building the Docker image from the Dockerfile.
+      - docker build -t $REPOSITORY_URI:$IMAGE_TAG $CODEBUILD_SRC_DIR/Phoenix/ecs
   post_build:
     commands:
       - echo Build completed on `date`
+      - echo Pushing the Docker image...
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - echo Writing image definitions file...

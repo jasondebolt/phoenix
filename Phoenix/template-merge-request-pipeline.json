@@ -1,0 +1,356 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Generates a merge request pipeline.",
+  "Parameters": {
+    "ProjectName": {
+      "Description": "The name of your project.",
+      "MinLength": "1",
+      "MaxLength": "20",
+      "AllowedPattern": "^[a-z]+[\\-a-z0-9]*[a-z0-9]+",
+      "ConstraintDescription": "User all lowercase, dashes, or numbers (demo-project) between 1 and 20 characters in length. Must not start with a number, and must not start or end with a dash.",
+      "Type": "String"
+    },
+    "PipelineName": {
+      "Description": "The name of the CodePipeline.",
+      "Type": "String"
+    },
+    "RepoName": {
+      "Description": "The name of the CodeCommit git repo",
+      "Type": "String"
+    },
+    "SourceBranch": {
+      "Description": "The name of the source branch which triggers this pipeline",
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "CodePipeline": {
+      "Type": "AWS::CodePipeline::Pipeline",
+      "Properties": {
+        "RoleArn" : {
+          "Fn::ImportValue": {
+            "Fn::Join": ["-", [
+              {"Ref": "ProjectName"},
+              "microservice",
+              "CodePipelineServiceRoleArn"
+            ]]
+          }
+        },
+        "Name": {
+          "Fn::Join": ["-", [
+            {"Ref": "SourceBranch"},
+            "merge-request-branch"
+          ]]
+        },
+        "Stages": [{
+            "Name": "Source",
+            "Actions": [{
+              "Name": "SourceAction",
+              "ActionTypeId": {
+                "Category": "Source",
+                "Owner": "AWS",
+                "Version": "1",
+                "Provider": "CodeCommit"
+              },
+              "OutputArtifacts": [{
+                "Name": "SourceOutput"
+              }],
+              "Configuration": {
+                "RepositoryName": {
+                  "Ref": "RepoName"
+                },
+                "BranchName": {
+                  "Ref": "SourceBranch"
+                }
+              },
+              "RunOrder": 1
+            }]
+          },
+          {
+            "Name": "Build",
+            "Actions": [{
+              "Name": "Build",
+              "ActionTypeId": {
+                  "Category": "Build",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "CodeBuild"
+                },
+                "InputArtifacts": [{
+                  "Name": "SourceOutput"
+                }],
+                "OutputArtifacts": [{
+                  "Name": "BuildOutput"
+                }],
+                "RunOrder": 1,
+                "Configuration": {
+                  "ProjectName": {
+                    "Fn::Join": ["-", [
+                      {
+                        "Ref": "ProjectName"
+                      },
+                      "merge-request"
+                    ]]
+                  }
+                }
+              },
+              {
+                "Name": "UnitTest",
+                "ActionTypeId": {
+                  "Category": "Test",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "CodeBuild"
+                },
+                "InputArtifacts": [{
+                  "Name": "SourceOutput"
+                }],
+                "RunOrder": 1,
+                "Configuration": {
+                  "ProjectName": {
+                    "Fn::Join": ["-", [
+                      {"Ref": "ProjectName"},
+                      "unit-test"
+                    ]]
+                  }
+                }
+              },
+              {
+                "Name": "Lint",
+                "ActionTypeId": {
+                  "Category": "Test",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "CodeBuild"
+                },
+                "InputArtifacts": [{
+                  "Name": "SourceOutput"
+                }],
+                "RunOrder": 1,
+                "Configuration": {
+                  "ProjectName": {
+                    "Fn::Join": ["-", [
+                      {"Ref": "ProjectName"},
+                      "lint"
+                    ]]
+                  }
+                }
+              },
+              {
+                "Name": "CalculateCosts",
+                "ActionTypeId": {
+                  "Category": "Test",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "CodeBuild"
+                },
+                "InputArtifacts": [{
+                  "Name": "SourceOutput"
+                }],
+                "RunOrder": 1,
+                "Configuration": {
+                  "ProjectName": {
+                    "Fn::Join": ["-", [
+                      {"Ref": "ProjectName"},
+                      "calculate-costs"
+                    ]]
+                  }
+                }
+              },
+              {
+                "Name": "StaticAnalysis",
+                "ActionTypeId": {
+                  "Category": "Test",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "CodeBuild"
+                },
+                "InputArtifacts": [{
+                  "Name": "SourceOutput"
+                }],
+                "RunOrder": 1,
+                "Configuration": {
+                  "ProjectName": {
+                    "Fn::Join": ["-", [
+                      {"Ref": "ProjectName"},
+                      "static-analysis"
+                    ]]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "Name": "NotifyGitlab",
+            "Actions": [
+              {
+                "Name": "NotifyGitlab",
+                "ActionTypeId": {
+                  "Category": "Test",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "CodeBuild"
+                },
+                "InputArtifacts": [{
+                  "Name": "SourceOutput"
+                }],
+                "RunOrder": 1,
+                "Configuration": {
+                  "ProjectName": {
+                    "Fn::Join": ["-", [
+                      {"Ref": "ProjectName"},
+                      "gitlab-notify"
+                    ]]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "ArtifactStore": {
+          "Type": "S3",
+          "Location" : {
+            "Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                {"Ref": "ProjectName"},
+                "microservice",
+                "CodePipelineBucketName"
+              ]]
+            }
+          }
+        }
+      }
+    },
+    "CodeBuildSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupName": {
+          "Fn::Join": ["-", [{
+              "Ref": "ProjectName"
+            },
+            "CodeBuild",
+            "MR",
+            "SG"
+          ]]
+        },
+        "GroupDescription": {
+          "Fn::Join": ["-", [{
+              "Ref": "ProjectName"
+            },
+            "CodeBuild",
+            "MR",
+            "SG"
+          ]]
+        },
+        "VpcId": {
+          "Fn::ImportValue": {
+            "Fn::Join": ["-", [
+              "dev",
+              "vpc",
+              "VPC"
+            ]]
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {"Fn::Join": ["-", [
+              {"Ref": "ProjectName"},
+              "codebuild",
+              "merge-request",
+              "sg"
+            ]]}
+          }
+        ]
+      }
+    },
+    "CodeBuildGitlabNotify": {
+      "Type": "AWS::CodeBuild::Project",
+      "Properties": {
+        "VpcConfig": {
+          "SecurityGroupIds": [
+            {"Ref": "CodeBuildSecurityGroup"}
+          ],
+          "Subnets": [
+            {"Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                "dev",
+                "vpc",
+                "PrivateSubnetAZ1"
+              ]]
+            }},
+            {"Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                "dev",
+                "vpc",
+                "PrivateSubnetAZ2"
+              ]]
+            }}
+          ],
+          "VpcId":  {
+            "Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                "dev",
+                "vpc",
+                "VPC"
+              ]]
+            }
+          }
+        },
+        "Artifacts": {
+          "Type": "CODEPIPELINE",
+          "NamespaceType": "BUILD_ID",
+          "Name": {
+            "Ref": "ProjectName"
+          },
+          "Packaging": "NONE"
+        },
+        "BadgeEnabled": "true",
+        "Description": {
+          "Ref": "ProjectDescription"
+        },
+        "Environment": {
+          "ComputeType": "BUILD_GENERAL1_LARGE",
+          "EnvironmentVariables": [
+            {
+              "Name" : "AWS_ACCOUNT_ID",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "AWS::AccountId"}
+            }
+          ],
+          "Image": {
+            "Ref": "CodeBuildDockerImage"
+          },
+          "PrivilegedMode": "true",
+          "Type": "LINUX_CONTAINER"
+        },
+        "Name": {
+          "Fn::Join": ["", [{
+              "Ref": "ProjectName"
+            },
+            "-unit-test"
+          ]]
+        },
+        "ServiceRole": {
+          "Ref": "CodeBuildServiceRole"
+        },
+        "Source": {
+          "BuildSpec": "Phoenix/buildspec-unit-test.yml",
+          "Type": "CODECOMMIT",
+          "Location": {
+            "Fn::Join": ["", [
+              "https://git-codecommit.",
+              {"Ref": "AWS::Region"},
+              ".amazonaws.com/v1/repos/",
+              {
+                "Ref": "ProjectName"
+              }
+            ]]
+          }
+        },
+        "TimeoutInMinutes": 60,
+        "Tags": []
+      }
+    },
+  }
+}

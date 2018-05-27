@@ -20,8 +20,8 @@ phases:
   build:
     commands:
       - echo Build started on `date`
-      - echo Running unit tests on source code...
-      - #sbt test
+      - echo Running RDS migration ...
+      #- sbt scalastyle
   post_build:
     commands:
       - echo Build completed on `date`

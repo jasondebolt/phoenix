@@ -7,24 +7,49 @@ CloudFormation expects this format:
 https://aws.amazon.com/blogs/devops/passing-parameters-to-cloudformation-stacks-with-the-aws-cli-and-powershell/
 
 USAGE:
-  python parameters_generator.py template.json > temp.json
+  python parameters_generator.py template.json {cloudformation | codepipeline} > temp.json
+
+  The input format of the template.json file is the codepipeline format.
 
   Use to the temp.json file at a parameter file in a cloudformation CLI call:
   aws cloudformation create-stack --stack-name <stack_name> --template-body file://template.json --parameters file://temp.json
+
+  OR
+
+  Use to the temp.json file at a parameter file in a codepipeline deployment action.
 """
 
 __author__ = "Jason DeBolt (jasondebolt@gmail.com)"
 
 import sys, os, json
 
-def convert_parameters_file(obj):
+def convert_parameters_file(obj, conversion_format='cloudformation'):
     params = obj['Parameters']
-    new_obj = []
+    cloudformation_obj = []
+    codepipeline_obj = {'Parameters': {}}
+
+    project_name = _parse_json(
+        'ssm-microservice-params.json')['Parameters']['ProjectName']
 
     for param_key in params:
-        new_obj.append(
-            {'ParameterKey': param_key, 'ParameterValue': params[param_key]})
-    return json.dumps(new_obj, indent=4)
+        value = params[param_key]
+        if 'PROJECT_NAME_NO_DASHES' in value:
+            # This shortens a dash-delimited string like 'something-long' to 'somlon'
+            value = value.replace(
+                'PROJECT_NAME_NO_DASHES',
+                ('').join([i[0] + i[1] + i[2] for i in project_name.split('-')])
+            )
+        elif 'PROJECT_NAME' in value:
+            value = value.replace('PROJECT_NAME', project_name)
+
+        if conversion_format == 'cloudformation':
+            cloudformation_obj.append({'ParameterKey': param_key, 'ParameterValue': value})
+        elif conversion_format == 'codepipeline':
+            codepipeline_obj['Parameters'][param_key] = value
+        else:
+            raise SystemExit('Invalid conversion_format: {0}'.format(
+                conversion_format))
+    return json.dumps(cloudformation_obj or codepipeline_obj, indent=4)
 
 def _parse_json(path):
     result = open(os.path.join(sys.path[0], path), 'rb').read()
@@ -35,9 +60,12 @@ def _parse_json(path):
         raise(e)
 
 def main(args):
+    if len(args) != 2 or args[1] not in ['cloudformation', 'codepipeline']:
+        raise SystemExit('Invalid arguments!')
     params_file = args[0]
+    conversion_format = args[1]
     json_result = _parse_json(params_file)
-    print(convert_parameters_file(json_result))
+    print(convert_parameters_file(json_result, conversion_format))
 
 if __name__ == '__main__':
     main(sys.argv[1:])

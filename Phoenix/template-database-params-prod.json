@@ -1,11 +1,12 @@
 {
   "Parameters": {
     "Environment": "prod",
-    "ProjectName": "phoenix",
+    "DatabaseNamePrefix": "PROJECT_NAME_NO_DASHES",
     "Version": "VERSION_ID",
     "Vpc": "prod",
     "DBEngine": "aurora-mysql",
     "DBInstanceClass": "db.t2.small",
-    "MasterUsername": "phoenix_admin"
+    "MasterUsername": "PROJECT_NAME_NO_DASHES_admin",
+    "SnapshotIdentifier": ""
   }
 }

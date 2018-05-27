@@ -3,8 +3,9 @@
   "Description" : "Deploys an API (RESTful or not)",
   "Parameters": {
     "ProjectName": {
-      "Description": "The name of the project.",
-      "Type": "String"
+      "Description": "The name of your project.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-project-name"
     },
     "Environment": {
       "Description": "The environment (dev, testing, prod, etc.) to deploy to.",

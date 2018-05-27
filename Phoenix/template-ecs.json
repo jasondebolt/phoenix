@@ -4,14 +4,46 @@
   "Parameters": {
     "ProjectName": {
       "Description": "The name of your project.",
-      "MinLength": "1",
-      "MaxLength": "20",
-      "AllowedPattern": "^[a-z]+[\\-a-z0-9]*[a-z0-9]+",
-      "ConstraintDescription": "User all lowercase, dashes, or numbers (demo-project) between 1 and 20 characters in length. Must not start with a number, and must not start or end with a dash.",
-      "Type": "String"
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-project-name"
+    },
+    "EncryptionKeyId": {
+      "Description": "The encryption Key ID.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-encryption-key-id"
+    },
+    "Domain": {
+      "Description": "The domain name that this service will fall under.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-domain"
+    },
+    "HostedZoneId": {
+      "Description": "The Route53 hosted zone id that this service will fall under.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-hosted-zone-id"
+    },
+    "KeyPairName":{
+      "Description":"Name of an existing EC2 KeyPair to enable SSH access to the ECS instances.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-key-pair-name"
+    },
+    "LoadBalancerLogsBucketName": {
+      "Description": "The bucket name in which load balancer logs will be stored.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-load-balancer-logs-bucket-name"
+    },
+    "SSLCertificateARN": {
+      "Description": "The AWS ACM Certificate ARN.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-ssl-certificate-arn"
     },
     "Environment": {
       "Description": "The environment to deploy the instance to.",
+      "Type": "String"
+    },
+    "DBEnvironment": {
+      "Description": "The database environment used by this ECS cluster",
+      "AllowedValues": ["dev", "testing", "prod"],
       "Type": "String"
     },
     "NetworkMode": {
@@ -39,7 +71,8 @@
     },
     "ImageName": {
       "Description": "The short name of the ECR Image",
-      "Type": "String"
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-project-name"
     },
     "ImageVersion": {
       "Description": "The version of the ECR Image",
@@ -48,11 +81,13 @@
     },
     "ContainerName": {
       "Description": "A name for the container",
-      "Type": "String"
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-project-name"
     },
     "TaskFamily": {
       "Description": "A family groups multiples versions of a task definition",
-      "Type": "String"
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-project-name"
     },
     "LaunchType": {
       "Description": "ECS Launch Type",
@@ -319,9 +354,9 @@
           "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
         ],
         "RoleName": {"Fn::Join": ["-", [
-          {"Ref": "AWS::StackName"},
           {"Ref": "ProjectName"},
-          "ecs-task-execution-role"
+          {"Ref": "Environment"},
+          "ecs-task-exec"
         ]]}
       }
     },
@@ -344,51 +379,69 @@
             "Name": { "Ref": "ContainerName" },
             "Environment": [
               {
-                "Name": "KMSEncryptionKeyId",
-                "Value": {
-                  "Fn::ImportValue": {
-                    "Fn::Join": ["-", [
-                      {"Ref": "ProjectName"},
-                      "microservice",
-                      "KMSEncryptionKeyId"
-                    ]]
-                  }
-                }
+                "Name": "KMS_ENCRYPTION_KEY_ID",
+                "Value": {"Ref": "EncryptionKeyId"}
               },
               {
-                "Name": "Endpoint",
+                "Name": "RDS_MASTER_USERNAME",
                 "Value": {
                   "Fn::ImportValue": {
                     "Fn::Join": ["-", [
                       {"Ref": "ProjectName"},
                       "database",
-                      {"Ref": "Environment"},
+                      {"Ref": "DBEnvironment"},
+                      "MasterUsername"
+                    ]]
+                  }
+                }
+              },
+              {
+                "Name": "RDS_PASSWORD_PARAMETER_STORE_KEY",
+                "Value": {
+                  "Fn::ImportValue": {
+                    "Fn::Join": ["-", [
+                      {"Ref": "ProjectName"},
+                      "database",
+                      {"Ref": "DBEnvironment"},
+                      "DatabasePasswordParameterStoreKey"
+                    ]]
+                  }
+                }
+              },
+              {
+                "Name": "RDS_WRITE_ENDPOINT",
+                "Value": {
+                  "Fn::ImportValue": {
+                    "Fn::Join": ["-", [
+                      {"Ref": "ProjectName"},
+                      "database",
+                      {"Ref": "DBEnvironment"},
                       "Endpoint"
                     ]]
                   }
                 }
               },
               {
-                "Name": "ReadEndpoint",
+                "Name": "RDS_READ_ENDPOINT",
                 "Value": {
                   "Fn::ImportValue": {
                     "Fn::Join": ["-", [
                       {"Ref": "ProjectName"},
                       "database",
-                      {"Ref": "Environment"},
+                      {"Ref": "DBEnvironment"},
                       "ReadEndpoint"
                     ]]
                   }
                 }
               },
               {
-                "Name": "EndpointPort",
+                "Name": "RDS_ENDPOINT_PORT",
                 "Value": {
                   "Fn::ImportValue": {
                     "Fn::Join": ["-", [
                       {"Ref": "ProjectName"},
                       "database",
-                      {"Ref": "Environment"},
+                      {"Ref": "DBEnvironment"},
                       "EndpointPort"
                     ]]
                   }
@@ -509,15 +562,7 @@
     "ApplicationELBLogsS3BucketPolicy": {
       "Type" : "AWS::S3::BucketPolicy",
       "Properties" : {
-         "Bucket": {
-           "Fn::ImportValue": {
-             "Fn::Join": ["-", [
-               {"Ref": "ProjectName"},
-               "microservice",
-               "LoadBalancerLogsBucketName"
-              ]]
-            }
-         },
+         "Bucket": {"Ref": "LoadBalancerLogsBucketName"},
          "PolicyDocument" : {
            "Version": "2012-10-17",
            "Statement": [
@@ -527,15 +572,8 @@
                ],
                "Effect": "Allow",
                "Resource": {"Fn::Join": ["", [
-                 "arn:aws:s3:::", {
-                   "Fn::ImportValue": {
-                     "Fn::Join": ["-", [
-                       {"Ref": "ProjectName"},
-                       "microservice",
-                       "LoadBalancerLogsBucketName"
-                     ]]
-                   }
-                 },
+                 "arn:aws:s3:::",
+                 {"Ref": "LoadBalancerLogsBucketName"},
                  "/",
                  { "Ref": "AWS::StackName" },
                  "/AWSLogs/",
@@ -578,15 +616,7 @@
               },
               {
                 "Key": "access_logs.s3.bucket",
-                "Value": {
-                  "Fn::ImportValue": {
-                    "Fn::Join": ["-", [
-                      {"Ref": "ProjectName"},
-                      "microservice",
-                      "LoadBalancerLogsBucketName"
-                    ]]
-                  }
-                }
+                "Value": {"Ref": "LoadBalancerLogsBucketName"}
               },
               {
                 "Key": "access_logs.s3.prefix",
@@ -626,15 +656,7 @@
       "Properties": {
         "Certificates": [
           {
-            "CertificateArn": {
-              "Fn::ImportValue": {
-                "Fn::Join": ["-", [
-                  {"Ref": "ProjectName"},
-                  "microservice",
-                  "SSLCertificateARN"
-                ]]
-              }
-            }
+            "CertificateArn": {"Ref": "SSLCertificateARN"}
           }
         ],
         "DefaultActions": [
@@ -812,15 +834,7 @@
         }],
         "InstanceType": { "Ref": "InstanceType" },
         "IamInstanceProfile": { "Ref": "EC2InstanceProfile" },
-        "KeyName": {
-          "Fn::ImportValue": {
-            "Fn::Join": ["-", [
-              {"Ref": "ProjectName"},
-              "microservice",
-              "KeyPairName"
-            ]]
-          }
-        },
+        "KeyName": {"Ref": "KeyPairName"},
         "UserData": {
           "Fn::Base64": {
             "Fn::Join": [
@@ -959,21 +973,7 @@
               "Statement":[
                 {
                   "Effect":"Allow",
-                  "Action":[
-                    "ecs:CreateCluster",
-                    "ecs:DeregisterContainerInstance",
-                    "ecs:DiscoverPollEndpoint",
-                    "ecs:Poll",
-                    "ecs:RegisterContainerInstance",
-                    "ecs:StartTelemetrySession",
-                    "ecs:Submit*",
-                    "ecr:GetAuthorizationToken",
-                    "ecr:BatchCheckLayerAvailability",
-                    "ecr:GetDownloadUrlForLayer",
-                    "ecr:BatchGetImage",
-                    "logs:CreateLogStream",
-                    "logs:PutLogEvents"
-                  ],
+                  "Action":["*"],
                   "Resource":"*"
                 }
               ]
@@ -1081,7 +1081,7 @@
             "Fn::Join": ["-", [
               {"Ref": "ProjectName"},
               "database",
-              {"Ref": "Environment"},
+              {"Ref": "DBEnvironment"},
               "EndpointPort"
             ]]
           }
@@ -1091,7 +1091,7 @@
             "Fn::Join": ["-", [
               {"Ref": "ProjectName"},
               "database",
-              {"Ref": "Environment"},
+              {"Ref": "DBEnvironment"},
               "RDSDBSecurityGroup"
             ]]
           }
@@ -1105,7 +1105,7 @@
             "Fn::Join": ["-", [
               {"Ref": "ProjectName"},
               "database",
-              {"Ref": "Environment"},
+              {"Ref": "DBEnvironment"},
               "EndpointPort"
             ]]
           }
@@ -1174,15 +1174,7 @@
     },
     "DnsRecordSetGroup": {
       "Properties": {
-        "HostedZoneId": {
-          "Fn::ImportValue": {
-            "Fn::Join": ["-", [
-              {"Ref": "ProjectName"},
-              "microservice",
-              "HostedZoneId"
-            ]]
-          }
-        },
+        "HostedZoneId": {"Ref": "HostedZoneId"},
         "RecordSets": [
           {
             "AliasTarget": {
@@ -1210,15 +1202,7 @@
                   ]]
                 }
               ]},
-              {
-                "Fn::ImportValue": {
-                  "Fn::Join": ["-", [
-                    {"Ref": "ProjectName"},
-                    "microservice",
-                    "Domain"
-                  ]]
-                }
-              }
+              {"Ref": "Domain"}
             ]]},
             "Type": "A"
           }
@@ -1242,15 +1226,7 @@
             ]]
           }
         ]},
-        {
-          "Fn::ImportValue": {
-            "Fn::Join": ["-", [
-              {"Ref": "ProjectName"},
-              "microservice",
-              "Domain"
-            ]]
-          }
-        }
+        {"Ref": "Domain"}
       ]]}
     }
   }

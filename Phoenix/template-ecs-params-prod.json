@@ -1,14 +1,14 @@
 {
   "Parameters": {
     "AssignPublicIp": "ENABLED",
-    "ContainerName": "phoenix",
     "ContainerPort": "5000",
     "DesiredECSInstances": "1",
     "DesiredTaskCount": "1",
     "ELBSubnets": "Private",
     "Scheme": "internal",
     "Environment": "prod",
-    "ImageName": "phoenix",
+    "DBEnvironment": "prod",
+    "HealthCheckGracePeriodSeconds": "60",
     "ImageVersion": "IMAGE_TAG",
     "InstanceType": "c4.large",
     "LaunchType": "EC2",
@@ -16,8 +16,6 @@
     "MaxTasksToScaleOutInResponseTo500Errors": "2",
     "MinECSInstances": "1",
     "MinTasksToScaleInInResponseToScaleInEvent": "1",
-    "ProjectName": "phoenix",
-    "TaskFamily": "phoenix",
     "VPCPrefix": "prod",
     "WebSubnets": "Private"
   }

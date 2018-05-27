@@ -1,0 +1,14 @@
+{
+  "Parameters": {
+    "OrganizationName": "acme",
+    "ProjectName": "foo",
+    "Domain": "acme-foo.com",
+    "HostedZoneId": "",
+    "SSLCertificateARN": "",
+    "KeyPairName": "",
+    "ProjectDescription": "",
+    "NotificationEmail": "",
+    "IAMRole": "arn:aws:iam::{your-aws-account-id}:role/{your-role-name}",
+    "CodeBuildDockerImage": "{your-aws-account-id}.dkr.ecr.{your-region}.amazonaws.com/{your-docker-image}:latest"
+  }
+}
