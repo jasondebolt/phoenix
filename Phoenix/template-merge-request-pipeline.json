@@ -4,11 +4,13 @@
   "Parameters": {
     "ProjectName": {
       "Description": "The name of your project.",
-      "MinLength": "1",
-      "MaxLength": "20",
-      "AllowedPattern": "^[a-z]+[\\-a-z0-9]*[a-z0-9]+",
-      "ConstraintDescription": "User all lowercase, dashes, or numbers (demo-project) between 1 and 20 characters in length. Must not start with a number, and must not start or end with a dash.",
-      "Type": "String"
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-project-name"
+    },
+    "ProjectDescription": {
+      "Description": "A description of your project",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-project-description"
     },
     "PipelineName": {
       "Description": "The name of the CodePipeline.",
@@ -18,30 +20,60 @@
       "Description": "The name of the CodeCommit git repo",
       "Type": "String"
     },
+    "GitlabProjectId": {
+      "Description": "The project id if the Gitlab project",
+      "Type": "String"
+    },
+    "MergeRequestInternalId": {
+      "Description": "The merge request internal id of the gitlab merge request",
+      "Type": "String"
+    },
     "SourceBranch": {
       "Description": "The name of the source branch which triggers this pipeline",
       "Type": "String"
+    },
+    "CodePipelineBucketName": {
+      "Description": "The bucket name in which CodePipeline artifacts will be stored.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-code-pipeline-bucket-name"
+    },
+    "CodeBuildDockerImage": {
+      "Description": "The ECR name (i.e '{account_id}.dkr.ecr.us-east-1.amazonaws.com/{image_name}:0.1.0') to biuld the image with.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-code-build-docker-image"
+    },
+    "CodeBuildServiceRoleArn": {
+      "Description": "The CodeBuild service role that CodeBuild jobs assume.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-code-build-service-role-arn"
+    },
+    "LambdaBucketName": {
+      "Description": "The bucket name in which versioned lambda functions are stored.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-lambda-bucket-name"
+    },
+    "CodePipelineServiceRoleArn": {
+      "Description": "The CodePipeline service role that CodePipeline pipelines use.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-code-pipeline-service-role-arn"
+    },
+    "Version": {
+      "Description": "The identifier/version associated with this deployment.",
+      "Type": "String",
+      "Default": "latest"
+    },
+    "Environment": {
+      "Description": "The environment (dev, testing, prod, etc.) to deploy to.",
+      "Type": "String",
+      "Default": "all"
     }
   },
   "Resources": {
     "CodePipeline": {
       "Type": "AWS::CodePipeline::Pipeline",
       "Properties": {
-        "RoleArn" : {
-          "Fn::ImportValue": {
-            "Fn::Join": ["-", [
-              {"Ref": "ProjectName"},
-              "microservice",
-              "CodePipelineServiceRoleArn"
-            ]]
-          }
-        },
-        "Name": {
-          "Fn::Join": ["-", [
-            {"Ref": "SourceBranch"},
-            "merge-request-branch"
-          ]]
-        },
+        "RoleArn" : {"Ref": "CodePipelineServiceRoleArn"},
+        "Name": {"Ref": "PipelineName"},
         "Stages": [{
             "Name": "Source",
             "Actions": [{
@@ -84,14 +116,7 @@
                 }],
                 "RunOrder": 1,
                 "Configuration": {
-                  "ProjectName": {
-                    "Fn::Join": ["-", [
-                      {
-                        "Ref": "ProjectName"
-                      },
-                      "merge-request"
-                    ]]
-                  }
+                  "ProjectName": {"Ref": "PipelineName"}
                 }
               },
               {
@@ -109,7 +134,7 @@
                 "Configuration": {
                   "ProjectName": {
                     "Fn::Join": ["-", [
-                      {"Ref": "ProjectName"},
+                      {"Ref": "PipelineName"},
                       "unit-test"
                     ]]
                   }
@@ -130,50 +155,8 @@
                 "Configuration": {
                   "ProjectName": {
                     "Fn::Join": ["-", [
-                      {"Ref": "ProjectName"},
+                      {"Ref": "PipelineName"},
                       "lint"
-                    ]]
-                  }
-                }
-              },
-              {
-                "Name": "CalculateCosts",
-                "ActionTypeId": {
-                  "Category": "Test",
-                  "Owner": "AWS",
-                  "Version": "1",
-                  "Provider": "CodeBuild"
-                },
-                "InputArtifacts": [{
-                  "Name": "SourceOutput"
-                }],
-                "RunOrder": 1,
-                "Configuration": {
-                  "ProjectName": {
-                    "Fn::Join": ["-", [
-                      {"Ref": "ProjectName"},
-                      "calculate-costs"
-                    ]]
-                  }
-                }
-              },
-              {
-                "Name": "StaticAnalysis",
-                "ActionTypeId": {
-                  "Category": "Test",
-                  "Owner": "AWS",
-                  "Version": "1",
-                  "Provider": "CodeBuild"
-                },
-                "InputArtifacts": [{
-                  "Name": "SourceOutput"
-                }],
-                "RunOrder": 1,
-                "Configuration": {
-                  "ProjectName": {
-                    "Fn::Join": ["-", [
-                      {"Ref": "ProjectName"},
-                      "static-analysis"
                     ]]
                   }
                 }
@@ -181,27 +164,59 @@
             ]
           },
           {
-            "Name": "NotifyGitlab",
+            "Name": "DeployToECS",
             "Actions": [
               {
-                "Name": "NotifyGitlab",
+                "Name": "ECS",
                 "ActionTypeId": {
-                  "Category": "Test",
+                  "Category": "Deploy",
                   "Owner": "AWS",
                   "Version": "1",
-                  "Provider": "CodeBuild"
+                  "Provider": "CloudFormation"
                 },
                 "InputArtifacts": [{
-                  "Name": "SourceOutput"
+                  "Name": "BuildOutput"
                 }],
                 "RunOrder": 1,
                 "Configuration": {
-                  "ProjectName": {
+                  "RoleArn": {"Ref": "CodePipelineServiceRoleArn"},
+                  "ActionMode": "CREATE_UPDATE",
+                  "Capabilities": "CAPABILITY_NAMED_IAM",
+                  "StackName": {
                     "Fn::Join": ["-", [
-                      {"Ref": "ProjectName"},
-                      "gitlab-notify"
+                      {"Ref": "PipelineName"},
+                      "ecs",
+                      "deploy"
                     ]]
-                  }
+                  },
+                  "TemplateConfiguration": "BuildOutput::t-ecs-params-testing.json",
+                  "TemplatePath": "BuildOutput::template-ecs.json"
+                }
+              },
+              {
+                "Name": "PostMergeRequest",
+                "ActionTypeId": {
+                  "Category": "Invoke",
+                  "Owner": "AWS",
+                  "Version": "1",
+                  "Provider": "Lambda"
+                },
+                "InputArtifacts": [{
+                  "Name": "BuildOutput"
+                }],
+                "RunOrder": 2,
+                "Configuration": {
+                  "FunctionName": {
+                    "Fn::ImportValue": {
+                      "Fn::Join": ["-", [
+                        {"Ref": "ProjectName"},
+                        "merge-request-pipeline-api",
+                        {"Ref": "Environment"},
+                        "LambdaPostMergeRequestFunctionName"
+                      ]]
+                    }
+                  },
+                  "UserParameters": "{\"artifact\": \"BuildOutput\", \"file\": \"gitlab.json\"}"
                 }
               }
             ]
@@ -209,15 +224,7 @@
         ],
         "ArtifactStore": {
           "Type": "S3",
-          "Location" : {
-            "Fn::ImportValue": {
-              "Fn::Join": ["-", [
-                {"Ref": "ProjectName"},
-                "microservice",
-                "CodePipelineBucketName"
-              ]]
-            }
-          }
+          "Location" : {"Ref": "CodePipelineBucketName"}
         }
       }
     },
@@ -230,15 +237,16 @@
             },
             "CodeBuild",
             "MR",
+            {"Ref": "PipelineName"},
             "SG"
           ]]
         },
         "GroupDescription": {
-          "Fn::Join": ["-", [{
-              "Ref": "ProjectName"
-            },
+          "Fn::Join": ["-", [
+            {"Ref": "ProjectName"},
             "CodeBuild",
             "MR",
+            {"Ref": "PipelineName"},
             "SG"
           ]]
         },
@@ -255,8 +263,8 @@
           {
             "Key": "Name",
             "Value": {"Fn::Join": ["-", [
-              {"Ref": "ProjectName"},
               "codebuild",
+              {"Ref": "PipelineName"},
               "merge-request",
               "sg"
             ]]}
@@ -264,7 +272,7 @@
         ]
       }
     },
-    "CodeBuildGitlabNotify": {
+    "CodeBuild": {
       "Type": "AWS::CodeBuild::Project",
       "Properties": {
         "VpcConfig": {
@@ -305,7 +313,6 @@
           },
           "Packaging": "NONE"
         },
-        "BadgeEnabled": "true",
         "Description": {
           "Ref": "ProjectDescription"
         },
@@ -316,6 +323,31 @@
               "Name" : "AWS_ACCOUNT_ID",
               "Type" : "PLAINTEXT",
               "Value" : {"Ref": "AWS::AccountId"}
+            },
+            {
+              "Name" : "GITLAB_PROJECT_ID",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "GitlabProjectId"}
+            },
+            {
+              "Name" : "MERGE_REQUEST_INTERNAL_ID",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "MergeRequestInternalId"}
+            },
+            {
+              "Name" : "PIPELINE_NAME",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "PipelineName"}
+            },
+            {
+              "Name" : "REPO_NAME",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "RepoName"}
+            },
+            {
+              "Name" : "SOURCE_BRANCH",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "SourceBranch"}
             }
           ],
           "Image": {
@@ -325,32 +357,222 @@
           "Type": "LINUX_CONTAINER"
         },
         "Name": {
-          "Fn::Join": ["", [{
-              "Ref": "ProjectName"
-            },
-            "-unit-test"
+          "Fn::Join": ["", [
+            {"Ref": "PipelineName"}
           ]]
         },
         "ServiceRole": {
-          "Ref": "CodeBuildServiceRole"
+          "Ref": "CodeBuildServiceRoleArn"
         },
         "Source": {
-          "BuildSpec": "Phoenix/buildspec-unit-test.yml",
-          "Type": "CODECOMMIT",
-          "Location": {
-            "Fn::Join": ["", [
-              "https://git-codecommit.",
-              {"Ref": "AWS::Region"},
-              ".amazonaws.com/v1/repos/",
-              {
-                "Ref": "ProjectName"
-              }
-            ]]
-          }
+          "BuildSpec": "Phoenix/buildspec.yml",
+          "Type": "CODEPIPELINE"
         },
         "TimeoutInMinutes": 60,
         "Tags": []
       }
     },
+    "CodeBuildUnitTest": {
+      "Type": "AWS::CodeBuild::Project",
+      "Properties": {
+        "VpcConfig": {
+          "SecurityGroupIds": [
+            {"Ref": "CodeBuildSecurityGroup"}
+          ],
+          "Subnets": [
+            {"Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                "dev",
+                "vpc",
+                "PrivateSubnetAZ1"
+              ]]
+            }},
+            {"Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                "dev",
+                "vpc",
+                "PrivateSubnetAZ2"
+              ]]
+            }}
+          ],
+          "VpcId":  {
+            "Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                "dev",
+                "vpc",
+                "VPC"
+              ]]
+            }
+          }
+        },
+        "Artifacts": {
+          "Type": "CODEPIPELINE",
+          "NamespaceType": "BUILD_ID",
+          "Name": {
+            "Ref": "ProjectName"
+          },
+          "Packaging": "NONE"
+        },
+        "Description": {
+          "Ref": "ProjectDescription"
+        },
+        "Environment": {
+          "ComputeType": "BUILD_GENERAL1_LARGE",
+          "EnvironmentVariables": [
+            {
+              "Name" : "AWS_ACCOUNT_ID",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "AWS::AccountId"}
+            },
+            {
+              "Name" : "GITLAB_PROJECT_ID",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "GitlabProjectId"}
+            },
+            {
+              "Name" : "MERGE_REQUEST_INTERNAL_ID",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "MergeRequestInternalId"}
+            },
+            {
+              "Name" : "PIPELINE_NAME",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "PipelineName"}
+            },
+            {
+              "Name" : "REPO_NAME",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "RepoName"}
+            },
+            {
+              "Name" : "SOURCE_BRANCH",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "SourceBranch"}
+            }
+          ],
+          "Image": {
+            "Ref": "CodeBuildDockerImage"
+          },
+          "PrivilegedMode": "true",
+          "Type": "LINUX_CONTAINER"
+        },
+        "Name": {
+          "Fn::Join": ["-", [
+            {"Ref": "PipelineName"},
+            "unit-test"
+          ]]
+        },
+        "ServiceRole": {
+          "Ref": "CodeBuildServiceRoleArn"
+        },
+        "Source": {
+          "BuildSpec": "Phoenix/buildspec-unit-test.yml",
+          "Type": "CODEPIPELINE"
+        },
+        "TimeoutInMinutes": 60,
+        "Tags": []
+      }
+    },
+    "CodeBuildLint": {
+      "Type": "AWS::CodeBuild::Project",
+      "Properties": {
+        "VpcConfig": {
+          "SecurityGroupIds": [
+            {"Ref": "CodeBuildSecurityGroup"}
+          ],
+          "Subnets": [
+            {"Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                "dev",
+                "vpc",
+                "PrivateSubnetAZ1"
+              ]]
+            }},
+            {"Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                "dev",
+                "vpc",
+                "PrivateSubnetAZ2"
+              ]]
+            }}
+          ],
+          "VpcId":  {
+            "Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                "dev",
+                "vpc",
+                "VPC"
+              ]]
+            }
+          }
+        },
+        "Artifacts": {
+          "Type": "CODEPIPELINE",
+          "NamespaceType": "BUILD_ID",
+          "Name": {
+            "Ref": "ProjectName"
+          },
+          "Packaging": "NONE"
+        },
+        "Description": {
+          "Ref": "ProjectDescription"
+        },
+        "Environment": {
+          "ComputeType": "BUILD_GENERAL1_LARGE",
+          "EnvironmentVariables": [
+            {
+              "Name" : "AWS_ACCOUNT_ID",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "AWS::AccountId"}
+            },
+            {
+              "Name" : "GITLAB_PROJECT_ID",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "GitlabProjectId"}
+            },
+            {
+              "Name" : "MERGE_REQUEST_INTERNAL_ID",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "MergeRequestInternalId"}
+            },
+            {
+              "Name" : "PIPELINE_NAME",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "PipelineName"}
+            },
+            {
+              "Name" : "REPO_NAME",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "RepoName"}
+            },
+            {
+              "Name" : "SOURCE_BRANCH",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "SourceBranch"}
+            }
+          ],
+          "Image": {
+            "Ref": "CodeBuildDockerImage"
+          },
+          "PrivilegedMode": "true",
+          "Type": "LINUX_CONTAINER"
+        },
+        "Name": {
+          "Fn::Join": ["-", [
+            {"Ref": "PipelineName"},
+            "lint"
+          ]]
+        },
+        "ServiceRole": {
+          "Ref": "CodeBuildServiceRoleArn"
+        },
+        "Source": {
+          "BuildSpec": "Phoenix/buildspec-lint.yml",
+          "Type": "CODEPIPELINE"
+        },
+        "TimeoutInMinutes": 60,
+        "Tags": []
+      }
+    }
   }
 }

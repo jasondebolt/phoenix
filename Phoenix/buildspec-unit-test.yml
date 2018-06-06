@@ -1,5 +1,12 @@
 version: 0.2
 
+env:
+  parameter-store:
+    PROJECT_NAME: microservice-project-name
+    LAMBDA_BUCKET_NAME: microservice-lambda-bucket-name
+    GITLAB_UNIT_TEST_ACCESS_TOKEN: codebuild-unit-test-gitlab-access-token
+    GITLAB_URL: microservice-gitlab-url
+
 phases:
   install:
     commands:
@@ -12,8 +19,6 @@ phases:
       - echo Logging in to Amazon ECR...
       - aws --version
       - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
-      - PROJECT_NAME=`jq -r '.Parameters.ProjectName' template-microservice-params.json`
-      - LAMBDA_BUCKET_NAME=`jq -r '.Parameters.LambdaBucketName' template-microservice-params.json`
       - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$PROJECT_NAME
       - VERSION_ID=v_$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=$VERSION_ID
@@ -25,3 +30,5 @@ phases:
   post_build:
     commands:
       - echo Build completed on `date`
+      - # Notify Gitlab of build status if certain environment variables are present (see the code for details)
+      - python $CODEBUILD_SRC_DIR/Phoenix/merge_request_codebuild.py unit-test

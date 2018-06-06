@@ -3,12 +3,19 @@
   "Description" : "Deploys an API Gateway endpoint that GitLab merge request events can invoke to setup/teardown a review pipeline.",
   "Parameters": {
     "ProjectName": {
-      "Description": "The name of the project.",
-      "Type": "String"
+      "Description": "The name of your project.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-project-name"
+    },
+    "LambdaBucketName": {
+      "Description": "The bucket name in which versioned lambda functions are stored.",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+      "Default": "microservice-lambda-bucket-name"
     },
     "Environment": {
       "Description": "The environment (dev, testing, prod, etc.) to deploy to.",
-      "Type": "String"
+      "Type": "String",
+      "Default": "all"
     },
     "Version": {
       "Description": "The identifier/version associated with this API.",
@@ -111,30 +118,49 @@
         }
       }
     },
+    "LambdaSG": {
+      "Properties": {
+        "GroupDescription": "Merge Request Lambda Security Group",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {"Fn::Sub": [
+              "${StackName}-lambda-sg", {
+                "StackName": {"Ref": "AWS::StackName"}
+              }
+            ]}
+          }
+        ],
+        "VpcId": {
+          "Fn::ImportValue": "dev-vpc-VPC"
+        }
+      },
+      "Type": "AWS::EC2::SecurityGroup"
+    },
     "LambdaMergeRequests": {
       "Type": "AWS::Lambda::Function",
-      "DependsOn": ["LambdaRole", "LambdaRolePolicy"],
+      "DependsOn": ["LambdaRole", "LambdaRolePolicy", "LambdaSG"],
       "Properties": {
         "Handler": "lambda_function.lambda_handler",
         "Role": { "Fn::GetAtt" : ["LambdaRole", "Arn"] },
         "Code": {
-          "S3Bucket" : {
-            "Fn::ImportValue": {
-              "Fn::Join": ["-", [
-                {"Ref": "ProjectName"},
-                "microservice",
-                "MicroserviceBucketName"
-              ]]
-            }
-          },
+          "S3Bucket" : {"Ref": "LambdaBucketName"},
           "S3Key" : {"Fn::Join": ["/", [
-            "lambda",
             {"Ref": "Version"},
             "mergerequests",
             "lambda_function.zip"
           ]]}
         },
         "Runtime": "python3.6",
+        "VpcConfig": {
+          "SecurityGroupIds": [
+            {"Ref": "LambdaSG"}
+          ],
+          "SubnetIds" : [
+            {"Fn::ImportValue": "dev-vpc-PrivateSubnetAZ1"},
+            {"Fn::ImportValue": "dev-vpc-PrivateSubnetAZ2"}
+          ]
+        },
         "Timeout": "25"
       }
     },
@@ -185,9 +211,16 @@
                 "codepipeline:*",
                 "codebuild:*",
                 "s3:*",
+                "ec2:*",
+                "ssm:*",
+                "kms:*",
                 "logs:*",
                 "xray:*",
                 "sts:AssumeRole",
+                "iam:DeleteRole",
+                "iam:DeleteRolePolicy",
+                "iam:PutRolePolicy",
+                "iam:CreateRole",
                 "iam:PassRole",
                 "iam:GetRole"
               ],
@@ -208,15 +241,152 @@
         ]
       },
       "Type": "AWS::IAM::Policy"
+    },
+    "LambdaPostMergeRequestSG": {
+      "Properties": {
+        "GroupDescription": "Post Merge Request Lambda Security Group",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {"Fn::Sub": [
+              "${StackName}-post-mr-lambda-sg", {
+                "StackName": {"Ref": "AWS::StackName"}
+              }
+            ]}
+          }
+        ],
+        "VpcId": {
+          "Fn::ImportValue": "dev-vpc-VPC"
+        }
+      },
+      "Type": "AWS::EC2::SecurityGroup"
+    },
+    "LambdaPostMergeRequest": {
+      "Type": "AWS::Lambda::Function",
+      "DependsOn": ["LambdaPostMergeRequestRole", "LambdaPostMergeRequestRolePolicy", "LambdaPostMergeRequestSG"],
+      "Properties": {
+        "Handler": "lambda_function.lambda_handler",
+        "Role": { "Fn::GetAtt" : ["LambdaPostMergeRequestRole", "Arn"] },
+        "Code": {
+          "S3Bucket" : {"Ref": "LambdaBucketName"},
+          "S3Key" : {"Fn::Join": ["/", [
+            {"Ref": "Version"},
+            "post_mergerequests",
+            "lambda_function.zip"
+          ]]}
+        },
+        "Runtime": "python3.6",
+        "VpcConfig": {
+          "SecurityGroupIds": [
+            {"Ref": "LambdaPostMergeRequestSG"}
+          ],
+          "SubnetIds" : [
+            {"Fn::ImportValue": "dev-vpc-PrivateSubnetAZ1"},
+            {"Fn::ImportValue": "dev-vpc-PrivateSubnetAZ2"}
+          ]
+        },
+        "Timeout": "25"
+      }
+    },
+    "LambdaPostMergeRequestInvokePermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": [ "LambdaPostMergeRequest", "Arn" ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "codepipeline.amazonaws.com"
+      }
+    },
+    "LambdaPostMergeRequestRole": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "sts:AssumeRole"
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "lambda.amazonaws.com",
+                  "s3.amazonaws.com",
+                  "apigateway.amazonaws.com",
+                  "codepipeline.amazonaws.com",
+                  "codebuild.amazonaws.com"
+                ]
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        }
+      },
+      "Type": "AWS::IAM::Role"
+    },
+    "LambdaPostMergeRequestRolePolicy": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "lambda:*",
+                "dynamodb:*",
+                "cloudformation:*",
+                "codepipeline:*",
+                "codebuild:*",
+                "s3:*",
+                "ec2:*",
+                "ssm:*",
+                "kms:*",
+                "logs:*",
+                "xray:*",
+                "sts:AssumeRole",
+                "iam:DeleteRole",
+                "iam:DeleteRolePolicy",
+                "iam:PutRolePolicy",
+                "iam:CreateRole",
+                "iam:PassRole",
+                "iam:GetRole"
+              ],
+              "Effect": "Allow",
+              "Resource": "*"
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "PolicyName": { "Fn::Join": ["-", [
+          { "Ref": "AWS::StackName"},
+          "LambdaPostMergeRequestRole"
+        ]]},
+        "Roles": [
+          {
+            "Ref": "LambdaPostMergeRequestRole"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::Policy"
     }
   },
   "Outputs": {
+    "LambdaPostMergeRequestFunctionName": {
+      "Export": {
+        "Name": {
+          "Fn::Join": ["-", [
+            {"Ref": "ProjectName"},
+            "merge-request-pipeline-api",
+            {"Ref": "Environment"},
+            "LambdaPostMergeRequestFunctionName"
+          ]]
+        }
+      },
+      "Value": {"Ref": "LambdaPostMergeRequest"}
+    },
     "MergeRequestsURL": {
       "Export": {
         "Name": {
           "Fn::Join": ["-", [
             {"Ref": "ProjectName"},
-            "mr-api",
+            "merge-request-pipeline-api",
             {"Ref": "Environment"},
             "MergeRequestsURL"
           ]]

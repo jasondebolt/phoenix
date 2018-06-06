@@ -90,6 +90,10 @@
     "IAMRole": {
       "Description": "The IAM role that has access to all of the projects resources.",
       "Type": "String"
+    },
+    "GitlabURL": {
+      "Description": "The Gitlab URL of your organization (i.e https://gitlab.yourcompany.com)",
+      "Type": "String"
     }
   },
   "Conditions": {
@@ -247,6 +251,15 @@
         "Type": "String",
         "Value": {"Ref": "HostedZoneId"},
         "Description": "The Route53 hosted zone id that this service will fall under."
+      }
+    },
+    "GitlabURLParam": {
+      "Type": "AWS::SSM::Parameter",
+      "Properties": {
+        "Name": "microservice-gitlab-url",
+        "Type": "String",
+        "Value": {"Ref": "GitlabURL"},
+        "Description": "The Gitlab URL of your organization."
       }
     },
     "KeyPairNameParam": {

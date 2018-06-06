@@ -9,6 +9,7 @@
     "ProjectDescription": "",
     "NotificationEmail": "",
     "IAMRole": "arn:aws:iam::{your-aws-account-id}:role/{your-role-name}",
-    "CodeBuildDockerImage": "{your-aws-account-id}.dkr.ecr.{your-region}.amazonaws.com/{your-docker-image}:latest"
+    "CodeBuildDockerImage": "{your-aws-account-id}.dkr.ecr.{your-region}.amazonaws.com/{your-docker-image}:latest",
+    "GitlabURL": "https://gitlab.yourcompany.com"
   }
 }

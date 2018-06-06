@@ -185,6 +185,11 @@
       "Description": "The 'export' name prefix of the cloudformation stack for the VPC used by this service.",
       "Type": "String"
     },
+    "URLPrefixOverride": {
+      "Description": "The URL prefix to override the environment prefix with. Works only for non-production environments.",
+      "Type": "String",
+      "Default": ""
+    },
     "DesiredECSInstances": {
       "Type":"Number",
       "Default":"1",
@@ -302,6 +307,11 @@
         {"Ref" : "PlacementConstraintsType"}, ""
       ]}
     ]},
+    "HasURLPrefixOverride" : {"Fn::Not": [
+      {"Fn::Equals" : [
+        {"Ref" : "URLPrefixOverride"}, ""
+      ]}
+    ]},
     "HasPlacementStrategies" : {"Fn::Not": [
       {"Fn::Equals" : [
         {"Ref" : "PlacementStrategiesType"}, ""
@@ -352,12 +362,7 @@
         },
         "ManagedPolicyArns": [
           "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-        ],
-        "RoleName": {"Fn::Join": ["-", [
-          {"Ref": "ProjectName"},
-          {"Ref": "Environment"},
-          "ecs-task-exec"
-        ]]}
+        ]
       }
     },
     "ECSTaskDefinition": {
@@ -1196,10 +1201,11 @@
                 "IsProd",
                 "",
                 {
-                  "Fn::Join": ["", [
-                    {"Ref": "Environment"},
-                    "."
-                  ]]
+                  "Fn::If": [
+                    "HasURLPrefixOverride",
+                    {"Fn::Join": ["", [ {"Ref": "URLPrefixOverride"}, "." ]] },
+                    {"Fn::Join": ["", [ {"Ref": "Environment"}, "." ]] }
+                  ]
                 }
               ]},
               {"Ref": "Domain"}
@@ -1220,10 +1226,11 @@
           "IsProd",
           "",
           {
-            "Fn::Join": ["", [
-              {"Ref": "Environment"},
-              "."
-            ]]
+            "Fn::If": [
+              "HasURLPrefixOverride",
+              {"Fn::Join": ["", [ {"Ref": "URLPrefixOverride"}, "." ]] },
+              {"Fn::Join": ["", [ {"Ref": "Environment"}, "." ]] }
+            ]
           }
         ]},
         {"Ref": "Domain"}
