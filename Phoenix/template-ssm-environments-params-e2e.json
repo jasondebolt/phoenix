@@ -1,0 +1,8 @@
+{
+  "Parameters": {
+    "ProjectName": "PROJECT_NAME",
+    "Environment": "e2e",
+    "Description": "The End-To-End environment",
+    "Version": "VERSION_ID"
+  }
+}

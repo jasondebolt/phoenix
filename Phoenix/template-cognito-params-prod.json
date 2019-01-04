@@ -1,0 +1,8 @@
+{
+  "Parameters": {
+    "Environment": "prod",
+    "UserPoolName": "userpool",
+    "UserPoolClientName": "userpool",
+    "Version": "VERSION_ID"
+  }
+}

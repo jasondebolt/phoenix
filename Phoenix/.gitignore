@@ -1,4 +1,5 @@
 *params-dev.json
 !*vpc-params-dev.json
+!*vpc-endpoints-params-dev.json
 temp[0-9].json
 builds

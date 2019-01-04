@@ -1,0 +1,15 @@
+{
+  "Parameters": {
+    "Version": "VERSION_ID",
+    "VPCPrefix": "dev",
+    "APIGatewayDescription": "GitHub Release webhook API endpoint.",
+    "APINameSuffix": "release-webhook",
+    "APIPathPart": "Release",
+    "SSMParamSecretSuffix": "release-secret",
+    "SSMParamSecretDescription": "GitHub secret used for the release webhook.",
+    "LambdaSecurityGroupDescription": "GitHub Release Webhook Lambda Security Group.",
+    "WebhookHandlerLambdaFunctionName": "release_webhook",
+    "WebhookCreatorLambdaFunctionName": "create_release_webhook",
+    "GitHubWebhookEvents": "push"
+  }
+}

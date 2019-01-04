@@ -1,6 +1,7 @@
 {
   "Parameters": {
     "Environment": "testing",
+    "VPCPrefix": "testing",
     "Version": "VERSION_ID"
   }
 }

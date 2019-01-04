@@ -1,0 +1,8 @@
+{
+  "Parameters": {
+    "Environment": "e2e",
+    "UserPoolName": "userpool",
+    "UserPoolClientName": "userpool",
+    "Version": "VERSION_ID"
+  }
+}

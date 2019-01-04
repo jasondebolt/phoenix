@@ -1,0 +1,10 @@
+{
+  "Parameters": {
+    "Environment": "prod",
+    "ResourceServerName": "userpool",
+    "ResourceServerIdentifier": "userpool",
+    "DomainPrefix": "userpool",
+    "UseCustomDomain": "false",
+    "Version": "VERSION_ID"
+  }
+}

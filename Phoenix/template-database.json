@@ -1,26 +1,12 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
   "Description": "Generates all database resources required for a microservice.",
+  "Transform" : ["PROJECTNAMELambdaMacro"],
   "Parameters": {
-    "ProjectName": {
-      "Description": "The name of your project.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "microservice-project-name"
-    },
     "SnapshotIdentifier": {
       "Description": "The RDS Cluster Snapshot ID if you plan on restoring the DB cluster.",
       "Type": "String",
       "Default": ""
-    },
-    "Domain": {
-      "Description": "The domain name that this service will fall under.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "microservice-domain"
-    },
-    "HostedZoneId": {
-      "Description": "The Route53 hosted zone id that this service will fall under.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "microservice-hosted-zone-id"
     },
     "DatabaseNamePrefix": {
       "Description": "The name of your datbase.",
@@ -34,8 +20,8 @@
       "Description": "The environment to deploy the instance to.",
       "Type": "String"
     },
-    "Vpc": {
-      "Description": "The name of the VPC to deploy into",
+    "VPCPrefix": {
+      "Description": "The 'export' name prefix of the cloudformation stack for the VPC used by this service.",
       "Type": "String"
     },
     "DBEngine": {
@@ -66,31 +52,6 @@
       ],
       "Type": "String"
     },
-    "LambdaBucketName": {
-      "Description": "The bucket name in which Lambda artifacts will be stored.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "microservice-lambda-bucket-name"
-    },
-    "EncryptionKeyId": {
-      "Description": "The encryption Key ID.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "microservice-encryption-key-id"
-    },
-    "CodeBuildBucketName": {
-      "Description": "The bucket name in which CodeBuild artifacts will be stored.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "microservice-code-build-bucket-name"
-    },
-    "CodeBuildDockerImage": {
-      "Description": "The ECR name (i.e '{account_id}.dkr.ecr.us-east-1.amazonaws.com/{image_name}:0.1.0') to biuld the image with.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "microservice-code-build-docker-image"
-    },
-    "CodeBuildServiceRoleArn": {
-      "Description": "The ARN of the CodeBuild service role.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "microservice-code-build-service-role-arn"
-    },
     "Version": {
       "Description": "The Lambda function version",
       "Type": "String"
@@ -101,12 +62,16 @@
       {"Fn::Equals" : [
         {"Ref" : "SnapshotIdentifier"}, ""
       ]}
+    ]},
+    "IsNotRestoredFromSnapshot" : {"Fn::Equals" : [
+      {"Ref" : "SnapshotIdentifier"}, ""
     ]}
   },
   "Resources": {
     "RDSCluster": {
       "Type": "AWS::RDS::DBCluster",
-      "DependsOn": ["CustomResourcePasswordRetriever"],
+      "DependsOn": ["RDSPasswordRetriever"],
+      "DeletionPolicy": "Snapshot",
       "Properties": {
         "SnapshotIdentifier": {
           "Fn::If": [
@@ -116,11 +81,25 @@
           ]
         },
         "MasterUsername": {
-          "Ref": "MasterUsername"
+          "Fn::If": [
+            "IsNotRestoredFromSnapshot",
+            {"Ref": "MasterUsername"},
+            {"Ref": "AWS::NoValue"}
+          ]
         },
-        "StorageEncrypted": true,
+        "StorageEncrypted": {
+          "Fn::If": [
+            "IsNotRestoredFromSnapshot",
+            true,
+            {"Ref": "AWS::NoValue"}
+          ]
+        },
         "MasterUserPassword": {
-          "Fn::GetAtt": ["CustomResourcePasswordRetriever", "Password"]
+          "Fn::If": [
+            "IsNotRestoredFromSnapshot",
+            {"Fn::GetAtt": ["RDSPasswordRetriever", "Password"]},
+            {"Ref": "AWS::NoValue"}
+          ]
         },
         "Engine": {
           "Ref": "DBEngine"
@@ -147,7 +126,7 @@
         "AvailabilityZones": [{
           "Fn::ImportValue": {
             "Fn::Join": ["-", [{
-                "Ref": "Vpc"
+                "Ref": "VPCPrefix"
               },
               "vpc",
               "PrivateSubnetAZ1AvailabilityZone"
@@ -156,7 +135,7 @@
         }, {
           "Fn::ImportValue": {
             "Fn::Join": ["-", [{
-                "Ref": "Vpc"
+                "Ref": "VPCPrefix"
               },
               "vpc",
               "PrivateSubnetAZ2AvailabilityZone"
@@ -189,19 +168,16 @@
       "Properties": {
         "DBSubnetGroupDescription": "Microservice DB subnet group",
         "DBSubnetGroupName": {
-          "Fn::Join": ["-", [{
-              "Ref": "ProjectName"
-            },
-            {
-              "Ref": "Environment"
-            },
+          "Fn::Join": ["-", [
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+            {"Ref": "Environment"},
             "db", "subnet", "group"
           ]]
         },
         "SubnetIds": [{
             "Fn::ImportValue": {
               "Fn::Join": ["-", [{
-                  "Ref": "Vpc"
+                  "Ref": "VPCPrefix"
                 },
                 "vpc",
                 "PrivateSubnetAZ1"
@@ -211,7 +187,7 @@
           {
             "Fn::ImportValue": {
               "Fn::Join": ["-", [{
-                  "Ref": "Vpc"
+                  "Ref": "VPCPrefix"
                 },
                 "vpc",
                 "PrivateSubnetAZ2"
@@ -225,23 +201,17 @@
       "Type": "AWS::EC2::SecurityGroup",
       "Properties": {
         "GroupName": {
-          "Fn::Join": ["-", [{
-              "Ref": "ProjectName"
-            },
-            {
-              "Ref": "Environment"
-            },
+          "Fn::Join": ["-", [
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+            {"Ref": "Environment"},
             "DB",
             "SG"
           ]]
         },
         "GroupDescription": {
-          "Fn::Join": ["-", [{
-              "Ref": "ProjectName"
-            },
-            {
-              "Ref": "Environment"
-            },
+          "Fn::Join": ["-", [
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+            {"Ref": "Environment"},
             "DB",
             "SG"
           ]]
@@ -249,7 +219,7 @@
         "VpcId": {
           "Fn::ImportValue": {
             "Fn::Join": ["-", [
-              { "Ref": "Vpc" },
+              { "Ref": "VPCPrefix" },
               "vpc",
               "VPC"
             ]]
@@ -259,7 +229,7 @@
           {
             "Key": "Name",
             "Value": {"Fn::Join": ["-", [
-              {"Ref": "ProjectName"},
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
               "rds",
               {"Ref": "Environment"},
               "sg"
@@ -315,7 +285,8 @@
         "Description": "Aurora Cluster Parameter Group",
         "Family": "aurora-mysql5.7",
         "Parameters": {
-          "time_zone": "US/Pacific"
+          "time_zone": "UTC",
+          "binlog_format": "ROW"
         }
       }
     },
@@ -329,81 +300,16 @@
         }
       }
     },
-    "LambdaRole": {
-      "Type": "AWS::IAM::Role",
-      "Properties": {
-        "AssumeRolePolicyDocument": {
-          "Statement": [{
-            "Action": [
-              "sts:AssumeRole"
-            ],
-            "Effect": "Allow",
-            "Principal": {
-              "Service": [
-                "lambda.amazonaws.com",
-                "s3.amazonaws.com",
-                "apigateway.amazonaws.com",
-                "ssm.amazonaws.com"
-              ]
-            }
-          }],
-          "Version": "2012-10-17"
-        }
-      }
-    },
-    "LambdaRolePolicy": {
-      "Type": "AWS::IAM::Policy",
-      "Properties": {
-        "PolicyDocument": {
-          "Statement": [{
-            "Action": [
-              "lambda:*",
-              "dynamodb:*",
-              "s3:*",
-              "kms:*",
-              "ssm:*",
-              "logs:*",
-              "xray:*",
-              "sts:AssumeRole",
-              "iam:GetRole",
-              "iam:PassRole"
-            ],
-            "Effect": "Allow",
-            "Resource": "*"
-          }],
-          "Version": "2012-10-17"
-        },
-        "PolicyName": {
-          "Fn::Join": ["-", [{
-              "Ref": "ProjectName"
-            },
-            {
-              "Ref": "Environment"
-            },
-            {
-              "Ref": "AWS::StackName"
-            }
-          ]]
-        },
-        "Roles": [{
-          "Ref": "LambdaRole"
-        }]
-      }
-    },
     "LambdaPasswordGenerator": {
-      "DependsOn": ["LambdaRole", "LambdaRolePolicy"],
       "Type": "AWS::Lambda::Function",
       "Properties": {
         "Handler": "lambda_function.lambda_handler",
-        "Role": {
-          "Fn::GetAtt": ["LambdaRole", "Arn"]
-        },
+        "Role": {"PhoenixSSM": "/microservice/{ProjectName}/global/iam-role"},
         "Code": {
-          "S3Bucket" : {"Ref": "LambdaBucketName"},
+          "S3Bucket" : {"PhoenixSSM": "/microservice/{ProjectName}/global/lambda-bucket-name"},
           "S3Key": {
-            "Fn::Join": ["/", [{
-                "Ref": "Version"
-              },
+            "Fn::Join": ["/", [
+              {"Ref": "Version"},
               "password_generator",
               "lambda_function.zip"
             ]]
@@ -413,51 +319,55 @@
         "Timeout": "25"
       }
     },
-    "CustomResourcePasswordGenerator": {
-      "DependsOn": ["LambdaRole", "LambdaRolePolicy"],
+    "RDSPasswordGenerator": {
       "Type": "Custom::PasswordGenerator",
+      "DependsOn": "LambdaPasswordGenerator",
       "Properties": {
         "ServiceToken": {
           "Fn::GetAtt": ["LambdaPasswordGenerator", "Arn"]
         },
         "Type": "encrypt",
         "PasswordLength": 20,
-        "KMSKeyId": {"Ref": "EncryptionKeyId"},
-        "ParameterName": {"Fn::Join": ["-", [
-          {"Ref": "ProjectName"},
+        "KMSKeyId": "alias/aws/ssm",
+        "SnapshotIdentifier": {"Ref": "SnapshotIdentifier"},
+        "ParameterName": {"Fn::Join": ["/", [
+          "/microservice",
+          {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
           {"Ref": "Environment"},
-          "aurora", "admin", "password"
+          "aurora-admin-password"
         ]]},
         "ParameterDescription": {"Fn::Join": ["", [
           "This parameter was created by stack ",
           {"Ref": "AWS::StackName"},
           " to store passwords for the ",
-          {"Ref": "ProjectName"},
+          {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
           {"Ref": "Environment"},
           " Aurora DB TEST"
         ]]}
       }
     },
-    "CustomResourcePasswordRetriever": {
-      "DependsOn": ["LambdaRole", "LambdaRolePolicy", "CustomResourcePasswordGenerator"],
+    "RDSPasswordRetriever": {
       "Type": "Custom::PasswordRetriever",
+      "DependsOn": ["LambdaPasswordGenerator", "RDSPasswordGenerator"],
       "Properties": {
         "ServiceToken": {
           "Fn::GetAtt": ["LambdaPasswordGenerator", "Arn"]
         },
         "Type": "decrypt",
         "PasswordLength": 20,
-        "KMSKeyId": {"Ref": "EncryptionKeyId"},
-        "ParameterName": {"Fn::Join": ["-", [
-          {"Ref": "ProjectName"},
+        "KMSKeyId": "alias/aws/ssm",
+        "SnapshotIdentifier": {"Ref": "SnapshotIdentifier"},
+        "ParameterName": {"Fn::Join": ["/", [
+          "/microservice",
+          {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
           {"Ref": "Environment"},
-          "aurora", "admin", "password"
+          "aurora-admin-password"
         ]]},
         "ParameterDescription": {"Fn::Join": ["", [
           "This parameter was created by stack ",
           {"Ref": "AWS::StackName"},
           " to store passwords for the ",
-          {"Ref": "ProjectName"},
+          {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
           {"Ref": "Environment"},
           " Aurora DB"
         ]]}
@@ -465,6 +375,7 @@
     },
     "CodeBuildRDSMigration": {
       "Type": "AWS::CodeBuild::Project",
+      "DependsOn": ["RDSCluster", "RDSPasswordRetriever"],
       "Properties": {
         "VpcConfig": {
           "SecurityGroupIds": [
@@ -473,14 +384,14 @@
           "Subnets": [
             {"Fn::ImportValue": {
               "Fn::Join": ["-", [
-                {"Ref": "Environment"},
+                {"Ref": "VPCPrefix"},
                 "vpc",
                 "PrivateSubnetAZ1"
               ]]
             }},
             {"Fn::ImportValue": {
               "Fn::Join": ["-", [
-                {"Ref": "Environment"},
+                {"Ref": "VPCPrefix"},
                 "vpc",
                 "PrivateSubnetAZ2"
               ]]
@@ -489,7 +400,7 @@
           "VpcId":  {
             "Fn::ImportValue": {
               "Fn::Join": ["-", [
-                {"Ref": "Environment"},
+                {"Ref": "VPCPrefix"},
                 "vpc",
                 "VPC"
               ]]
@@ -498,30 +409,24 @@
         },
         "Artifacts": {
           "Type": "S3",
-          "Location": {"Ref": "CodeBuildBucketName"},
+          "Location": {"PhoenixSSM": "/microservice/{ProjectName}/global/code-build-bucket-name"},
           "NamespaceType": "BUILD_ID",
-          "Name": {
-            "Ref": "ProjectName"
-          },
+          "Name": {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
           "Packaging": "NONE"
         },
         "BadgeEnabled": "true",
         "Cache": {
           "Location": {
             "Fn::Join": ["", [
-              {"Ref": "CodeBuildBucketName"},
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/code-build-bucket-name"},
               "/",
-              {
-                "Ref": "ProjectName"
-              },
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
               "-cache"
             ]]
           },
           "Type": "S3"
         },
-        "Description": {
-          "Ref": "ProjectName"
-        },
+        "Description": {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
         "Environment": {
           "ComputeType": "BUILD_GENERAL1_LARGE",
           "EnvironmentVariables": [
@@ -529,20 +434,78 @@
               "Name" : "AWS_ACCOUNT_ID",
               "Type" : "PLAINTEXT",
               "Value" : {"Ref": "AWS::AccountId"}
+            },
+            {
+              "Name" : "ENVIRONMENT",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "Environment"}
+            },
+            {
+              "Name" : "PROJECT_NAME",
+              "Type" : "PLAINTEXT",
+              "Value" : {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"}
+            },
+            {
+              "Name" : "LAMBDA_BUCKET_NAME",
+              "Type" : "PLAINTEXT",
+              "Value" : {"PhoenixSSM": "/microservice/{ProjectName}/global/lambda-bucket-name"}
+            },
+            {
+              "Name": "RDS_MASTER_USERNAME",
+              "Type" : "PLAINTEXT",
+              "Value": {"Ref": "MasterUsername"}
+            },
+            {
+              "Name": "RDS_WRITE_ENDPOINT",
+              "Value": {"Fn::Join": ["", [
+                "db",
+                ".",
+                {"Ref": "Environment"},
+                ".",
+                {"PhoenixSSM": "/microservice/{ProjectName}/global/domain"}
+              ]]}
+            },
+            {
+              "Name": "RDS_READ_ENDPOINT",
+              "Value": {"Fn::Join": ["", [
+                "read",
+                ".",
+                "db",
+                ".",
+                {"Ref": "Environment"},
+                ".",
+                {"PhoenixSSM": "/microservice/{ProjectName}/global/domain"}
+              ]]}
+            },
+            {
+              "Name": "RDS_ENDPOINT_PORT",
+              "Value": {
+                "Fn::GetAtt": ["RDSCluster", "Endpoint.Port"]
+              }
+            },
+            {
+              "Name": "RDS_PASSWORD",
+              "Type": "PARAMETER_STORE",
+              "Value": {"Fn::Join": ["/", [
+                "/microservice",
+                {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+                {"Ref": "Environment"},
+                "aurora-admin-password"
+              ]]}
             }
           ],
-          "Image": {"Ref": "CodeBuildDockerImage"},
+          "Image": {"PhoenixSSM": "/microservice/{ProjectName}/global/code-build-docker-image"},
           "PrivilegedMode": "true",
           "Type": "LINUX_CONTAINER"
         },
         "Name": {
           "Fn::Join": ["-", [
-            {"Ref": "ProjectName"},
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
             "rds-migration",
             {"Ref": "Environment"}
           ]]
         },
-        "ServiceRole": {"Ref": "CodeBuildServiceRoleArn"},
+        "ServiceRole": {"PhoenixSSM": "/microservice/{ProjectName}/global/iam-role"},
         "Source": {
           "BuildSpec": "Phoenix/buildspec-rds-migration.yml",
           "Type": "CODECOMMIT",
@@ -551,9 +514,156 @@
               "https://git-codecommit.",
               {"Ref": "AWS::Region"},
               ".amazonaws.com/v1/repos/",
-              {
-                "Ref": "ProjectName"
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"}
+            ]]
+          }
+        },
+        "TimeoutInMinutes": 60,
+        "Tags": []
+      }
+    },
+    "CodeBuildIntegrationTest": {
+      "Type": "AWS::CodeBuild::Project",
+      "DependsOn": ["RDSCluster", "RDSPasswordRetriever"],
+      "Properties": {
+        "VpcConfig": {
+          "SecurityGroupIds": [
+            {"Ref": "RDSDBSecurityGroup"}
+          ],
+          "Subnets": [
+            {"Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                {"Ref": "VPCPrefix"},
+                "vpc",
+                "PrivateSubnetAZ1"
+              ]]
+            }},
+            {"Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                {"Ref": "VPCPrefix"},
+                "vpc",
+                "PrivateSubnetAZ2"
+              ]]
+            }}
+          ],
+          "VpcId":  {
+            "Fn::ImportValue": {
+              "Fn::Join": ["-", [
+                {"Ref": "VPCPrefix"},
+                "vpc",
+                "VPC"
+              ]]
+            }
+          }
+        },
+        "Artifacts": {
+          "Type": "S3",
+          "Location": {"PhoenixSSM": "/microservice/{ProjectName}/global/code-build-bucket-name"},
+          "NamespaceType": "BUILD_ID",
+          "Name": {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+          "Packaging": "NONE"
+        },
+        "BadgeEnabled": "true",
+        "Cache": {
+          "Location": {
+            "Fn::Join": ["", [
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/code-build-bucket-name"},
+              "/",
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+              "-cache"
+            ]]
+          },
+          "Type": "S3"
+        },
+        "Description": {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+        "Environment": {
+          "ComputeType": "BUILD_GENERAL1_LARGE",
+          "EnvironmentVariables": [
+            {
+              "Name" : "AWS_ACCOUNT_ID",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "AWS::AccountId"}
+            },
+            {
+              "Name" : "ENVIRONMENT",
+              "Type" : "PLAINTEXT",
+              "Value" : {"Ref": "Environment"}
+            },
+            {
+              "Name" : "PROJECT_NAME",
+              "Type" : "PLAINTEXT",
+              "Value" : {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"}
+            },
+            {
+              "Name" : "LAMBDA_BUCKET_NAME",
+              "Type" : "PLAINTEXT",
+              "Value" : {"PhoenixSSM": "/microservice/{ProjectName}/global/lambda-bucket-name"}
+            },
+            {
+              "Name": "RDS_MASTER_USERNAME",
+              "Type" : "PLAINTEXT",
+              "Value": {"Ref": "MasterUsername"}
+            },
+            {
+              "Name": "RDS_WRITE_ENDPOINT",
+              "Value": {"Fn::Join": ["", [
+                "db",
+                ".",
+                {"Ref": "Environment"},
+                ".",
+                {"PhoenixSSM": "/microservice/{ProjectName}/global/domain"}
+              ]]}
+            },
+            {
+              "Name": "RDS_READ_ENDPOINT",
+              "Value": {"Fn::Join": ["", [
+                "read",
+                ".",
+                "db",
+                ".",
+                {"Ref": "Environment"},
+                ".",
+                {"PhoenixSSM": "/microservice/{ProjectName}/global/domain"}
+              ]]}
+            },
+            {
+              "Name": "RDS_ENDPOINT_PORT",
+              "Value": {
+                "Fn::GetAtt": ["RDSCluster", "Endpoint.Port"]
               }
+            },
+            {
+              "Name": "RDS_PASSWORD",
+              "Type": "PARAMETER_STORE",
+              "Value": {"Fn::Join": ["/", [
+                "/microservice",
+                {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+                {"Ref": "Environment"},
+                "aurora-admin-password"
+              ]]}
+            }
+          ],
+          "Image": {"PhoenixSSM": "/microservice/{ProjectName}/global/code-build-docker-image"},
+          "PrivilegedMode": "true",
+          "Type": "LINUX_CONTAINER"
+        },
+        "Name": {
+          "Fn::Join": ["-", [
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+            "integration-test",
+            {"Ref": "Environment"}
+          ]]
+        },
+        "ServiceRole": {"PhoenixSSM": "/microservice/{ProjectName}/global/iam-role"},
+        "Source": {
+          "BuildSpec": "Phoenix/buildspec-integration-test.yml",
+          "Type": "CODECOMMIT",
+          "Location": {
+            "Fn::Join": ["", [
+              "https://git-codecommit.",
+              {"Ref": "AWS::Region"},
+              ".amazonaws.com/v1/repos/",
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"}
             ]]
           }
         },
@@ -563,7 +673,7 @@
     },
     "DnsRecordSetGroup": {
       "Properties": {
-        "HostedZoneId": {"Ref": "HostedZoneId"},
+        "HostedZoneId": {"PhoenixSSM": "/microservice/{ProjectName}/global/hosted-zone-id"},
         "RecordSets": [
           {
             "ResourceRecords": [
@@ -579,7 +689,7 @@
               ".",
               {"Ref": "Environment"},
               ".",
-              {"Ref": "Domain"},
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/domain"}
             ]]},
             "Type": "CNAME"
           },
@@ -599,7 +709,7 @@
               ".",
               {"Ref": "Environment"},
               ".",
-              {"Ref": "Domain"}
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/domain"}
             ]]},
             "Type": "CNAME"
           }
@@ -613,7 +723,7 @@
       "Export": {
         "Name": {
           "Fn::Join": ["-", [
-            {"Ref": "ProjectName"},
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
             "database",
             {"Ref": "Environment"},
             "MasterUsername"
@@ -628,24 +738,25 @@
       "Export": {
         "Name": {
           "Fn::Join": ["-", [
-            {"Ref": "ProjectName"},
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
             "database",
             {"Ref": "Environment"},
             "DatabasePasswordParameterStoreKey"
           ]]
         }
       },
-      "Value": {"Fn::Join": ["-", [
-        {"Ref": "ProjectName"},
+      "Value": {"Fn::Join": ["/", [
+        "/microservice",
+        {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
         {"Ref": "Environment"},
-        "aurora", "admin", "password"
+        "aurora-admin-password"
       ]]}
     },
     "EndpointPort": {
       "Export": {
         "Name": {
           "Fn::Join": ["-", [
-            {"Ref": "ProjectName"},
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
             "database",
             {"Ref": "Environment"},
             "EndpointPort"
@@ -660,7 +771,7 @@
       "Export": {
         "Name": {
           "Fn::Join": ["-", [
-            {"Ref": "ProjectName"},
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
             "database",
             {"Ref": "Environment"},
             "Endpoint"
@@ -672,14 +783,14 @@
         ".",
         {"Ref": "Environment"},
         ".",
-        {"Ref": "Domain"}
+        {"PhoenixSSM": "/microservice/{ProjectName}/global/domain"}
       ]]}
     },
     "ReadEndpoint": {
       "Export": {
         "Name": {
           "Fn::Join": ["-", [
-            {"Ref": "ProjectName"},
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
             "database",
             {"Ref": "Environment"},
             "ReadEndpoint"
@@ -693,14 +804,14 @@
         ".",
         {"Ref": "Environment"},
         ".",
-        {"Ref": "Domain"}
+        {"PhoenixSSM": "/microservice/{ProjectName}/global/domain"}
       ]]}
     },
     "RDSDBSecurityGroup": {
       "Export": {
         "Name": {
           "Fn::Join": ["-", [
-            {"Ref": "ProjectName"},
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
             "database",
             {"Ref": "Environment"},
             "RDSDBSecurityGroup"

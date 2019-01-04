@@ -1,0 +1,17 @@
+{
+  "Parameters": {
+    "Version": "VERSION_ID",
+    "VPCPrefix": "dev",
+    "APIGatewayDescription": "GitHub Pull Request webhook API endpoint.",
+    "APINameSuffix": "pull-request-webhook",
+    "APIPathPart": "PullRequest",
+    "SSMParamSecretSuffix": "pull-request-secret",
+    "SSMParamSecretDescription": "GitHub secret used for the pull request webhook.",
+    "LambdaSecurityGroupDescription": "GitHub Pull Request Webhook Lambda Security Group.",
+    "WebhookHandlerLambdaFunctionName": "pull_request_webhook",
+    "WebhookCreatorLambdaFunctionName": "create_pull_request_webhook",
+    "GitHubWebhookEvents": "pull_request",
+    "CreatePostEventLambdaFunction": "true",
+    "PostEventLambdaFunctionName": "post_pullrequests"
+  }
+}

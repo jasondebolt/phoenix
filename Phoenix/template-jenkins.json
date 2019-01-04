@@ -1,27 +1,8 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
   "Description": "Launches a Jenkins server. This template also spins up an NVMe non-root EBS volume, so only m5, c5, c5d, and i3.metal instances are allowed. To add more AMI's to the region map, use 'aws configure' to switch to the region, then 'aws ec2 describe-images --filters Name=name,Values=amzn-ami-hvm-2018.03.0.20180508-x86_64-gp2'",
+  "Transform" : ["PROJECTNAMELambdaMacro"],
   "Parameters": {
-    "ProjectName": {
-      "Description": "The name of your project.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "project-name"
-    },
-    "JenkinsBackupBucketName": {
-      "Description": "The bucket name in which jenkins backups and restores are saved to",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "jenkins-backup-bucket-name"
-    },
-    "SSLCertificateARN": {
-      "Description": "The AWS ACM Certificate ARN.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "ssl-certificate-arn"
-    },
-    "KeyPairName":{
-      "Description":"Name of an existing EC2 KeyPair to enable SSH access to the ECS instances.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "key-pair-name"
-    },
     "SnapshotId": {
       "Description": "The snapshot id from which to create the new volume. Use this only if you want to spin up this instance from an existing snapshot.",
       "Type": "String",
@@ -82,11 +63,6 @@
       "Description": "Prefix for Jenkins' DNS record (<prefix>.<zone>)",
       "Type": "String",
       "Default": "builds"
-    },
-    "DnsZone": {
-      "Description": "The domain name that this service will fall under.",
-      "Type": "AWS::SSM::Parameter::Value<String>",
-      "Default": "domain"
     }
   },
   "Mappings": {
@@ -390,12 +366,12 @@
         }
       },
       "Properties": {
-        "KeyName": {"Ref": "KeyPairName"},
+        "KeyName": {"PhoenixSSM": "/microservice/{ProjectName}/global/key-pair-name"},
         "Tags": [
           {
             "Key": "Name",
             "Value": {"Fn::Join": ["-", [
-              { "Ref": "ProjectName"},
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
               "JenkinsInstance",
               {"Ref": "DnsPrefix"}
             ]]}
@@ -644,7 +620,7 @@
             "LoadBalancerPort": "443",
             "InstancePort": "8080",
             "Protocol": "HTTPS",
-            "SSLCertificateId" : {"Ref": "SSLCertificateARN"}
+            "SSLCertificateId" : {"PhoenixSSM": "/microservice/{ProjectName}/global/ssl-certificate-arn"}
           }
         ],
         "HealthCheck": {
@@ -681,7 +657,7 @@
           {
             "Key": "Name",
             "Value": {"Fn::Join": ["-", [
-              { "Ref": "ProjectName"},
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
               "JenkinsInstance",
               {"Ref": "DnsPrefix"}
             ]]}
@@ -711,9 +687,7 @@
           "Fn::Join": [
             "",
             [
-              {
-                "Ref": "DnsZone"
-              },
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/domain"},
               "."
             ]
           ]
@@ -726,9 +700,7 @@
                 "Ref": "DnsPrefix"
               },
               ".",
-              {
-                "Ref": "DnsZone"
-              },
+              {"PhoenixSSM": "/microservice/{ProjectName}/global/domain"},
               "."
             ]
           ]

@@ -1,0 +1,12 @@
+{
+  "Parameters": {
+    "Environment": "e2e",
+    "DatabaseNamePrefix": "PROJECT_NAME_NO_DASHES",
+    "Version": "VERSION_ID",
+    "VPCPrefix": "testing",
+    "DBEngine": "aurora-mysql",
+    "DBInstanceClass": "db.t2.small",
+    "MasterUsername": "PROJECT_NAME_NO_DASHES_admin",
+    "SnapshotIdentifier": ""
+  }
+}

@@ -1,6 +1,7 @@
 {
   "Parameters": {
     "Environment": "prod",
+    "VPCPrefix": "prod",
     "Version": "VERSION_ID"
   }
 }

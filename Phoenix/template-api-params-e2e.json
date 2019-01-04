@@ -1,0 +1,7 @@
+{
+  "Parameters": {
+    "Environment": "e2e",
+    "VPCPrefix": "testing",
+    "Version": "VERSION_ID"
+  }
+}

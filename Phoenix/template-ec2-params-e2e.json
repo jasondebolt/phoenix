@@ -1,0 +1,13 @@
+{
+  "Parameters": {
+    "DesiredECSInstances": "1",
+    "Environment": "e2e",
+    "DBEnvironment": "e2e",
+    "InstanceType": "c4.large",
+    "LaunchType": "EC2",
+    "MaxECSInstances": "2",
+    "MinECSInstances": "1",
+    "VPCPrefix": "testing",
+    "WebSubnets": "Private"
+  }
+}

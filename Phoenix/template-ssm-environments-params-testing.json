@@ -1,0 +1,8 @@
+{
+  "Parameters": {
+    "ProjectName": "PROJECT_NAME",
+    "Environment": "testing",
+    "Description": "The testing environment is used by the developers to merge and test their changes before deploying into other environments.",
+    "Version": "VERSION_ID"
+  }
+}

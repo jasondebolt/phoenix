@@ -1,0 +1,2 @@
+airspeed==0.5.10
+requests==2.20.1

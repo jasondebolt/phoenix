@@ -29,16 +29,13 @@ def convert_parameters_file(obj, conversion_format='cloudformation'):
     codepipeline_obj = {'Parameters': {}}
 
     project_name = _parse_json(
-        'ssm-microservice-params.json')['Parameters']['ProjectName']
+        'template-ssm-globals-macro-params.json')['Parameters']['ProjectName']
 
     for param_key in params:
         value = params[param_key]
         if 'PROJECT_NAME_NO_DASHES' in value:
-            # This shortens a dash-delimited string like 'something-long' to 'somlon'
-            value = value.replace(
-                'PROJECT_NAME_NO_DASHES',
-                ('').join([i[0] + i[1] + i[2] for i in project_name.split('-')])
-            )
+            # Removes dashes
+            value = value.replace('PROJECT_NAME_NO_DASHES', project_name.replace('-', ''))[:7]
         elif 'PROJECT_NAME' in value:
             value = value.replace('PROJECT_NAME', project_name)
 

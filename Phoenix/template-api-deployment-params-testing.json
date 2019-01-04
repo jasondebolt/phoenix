@@ -1,7 +1,6 @@
 {
   "Parameters": {
     "Environment": "testing",
-    "ProjectName": "PROJECT_NAME",
     "Version": "VERSION_ID"
   }
 }

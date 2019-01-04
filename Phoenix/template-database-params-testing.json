@@ -3,9 +3,9 @@
     "Environment": "testing",
     "DatabaseNamePrefix": "PROJECT_NAME_NO_DASHES",
     "Version": "VERSION_ID",
-    "Vpc": "testing",
+    "VPCPrefix": "testing",
     "DBEngine": "aurora-mysql",
-    "DBInstanceClass": "db.t2.small",
+    "DBInstanceClass": "db.t2.medium",
     "MasterUsername": "PROJECT_NAME_NO_DASHES_admin",
     "SnapshotIdentifier": ""
   }

@@ -1,17 +1,11 @@
 version: 0.2
 
-env:
-  parameter-store:
-    PROJECT_NAME: microservice-project-name
-    LAMBDA_BUCKET_NAME: microservice-lambda-bucket-name
-    GITLAB_ACCESS_TOKEN: codebuild-gitlab-access-token
-    GITLAB_URL: microservice-gitlab-url
-
 phases:
   install:
     commands:
       - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay&
       - timeout 15s sh -c "until docker info; do echo .; sleep 1; done"
+      - pip install requests
   pre_build:
     commands:
       - # We set AWS_ACCOUNT_ID as an enviornment variable in the CloudFormation template which creates this CodeBuild job.
@@ -19,46 +13,114 @@ phases:
       - echo Logging in to Amazon ECR...
       - aws --version
       - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
-      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$PROJECT_NAME
+      - MAIN_REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$PROJECT_NAME-main
       - VERSION_ID=v_$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=$VERSION_ID
   build:
     commands:
       - echo Build started on `date`
-      - # Database (Aurora, DynamoDB)
-      - echo ===== DATABASE BUILD =====
-      - echo replacing VERSION_ID in the database params files.
-      - sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-database-params-testing.json > $CODEBUILD_SRC_DIR/t-database-params-testing.json_temp
-      - sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-database-params-prod.json > $CODEBUILD_SRC_DIR/t-database-params-prod.json_temp
-      - echo replacing params in the database params files.
-      - python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-database-params-testing.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-database-params-testing.json
-      - python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-database-params-prod.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-database-params-prod.json
-      - cp $CODEBUILD_SRC_DIR/Phoenix/template-database.json $CODEBUILD_SRC_DIR
-      - # Docker/ECS
-      - echo ===== DOCKER BUILD =====
-      - echo replacing build number in the task definition param files.
-      - sed "s/IMAGE_TAG/$IMAGE_TAG/g" $CODEBUILD_SRC_DIR/Phoenix/template-ecs-params-testing.json > $CODEBUILD_SRC_DIR/t-ecs-params-testing.json_temp
-      - sed "s/IMAGE_TAG/$IMAGE_TAG/g" $CODEBUILD_SRC_DIR/Phoenix/template-ecs-params-prod.json > $CODEBUILD_SRC_DIR/t-ecs-params-prod.json_temp
-      - echo replacing params in the task definition params files.
-      - python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-ecs-params-testing.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-ecs-params-testing.json
-      - python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-ecs-params-prod.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-ecs-params-prod.json
-      - cp $CODEBUILD_SRC_DIR/Phoenix/template-ecs.json $CODEBUILD_SRC_DIR
-      - echo Building the Docker image from the Dockerfile.
-      - docker build -t $REPOSITORY_URI:latest $CODEBUILD_SRC_DIR/Phoenix/ecs
-      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
-      - # Lambda
-      - echo ===== LAMBDA BUILD =====
-      - echo replacing VERSION_ID in the lambda params files.
-      - sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-lambda-params-testing.json > $CODEBUILD_SRC_DIR/t-lambda-params-testing.json_temp
-      - sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-lambda-params-prod.json > $CODEBUILD_SRC_DIR/t-lambda-params-prod.json_temp
-      - echo replacing params in the lambda params files.
-      - python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-lambda-params-testing.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-lambda-params-testing.json
-      - python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-lambda-params-prod.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-lambda-params-prod.json
-      - cp $CODEBUILD_SRC_DIR/Phoenix/template-lambda.json $CODEBUILD_SRC_DIR
-      - # Upload the Lambda functions
-      - listOfLambdaFunctions='projects password_generator'
+      - # testing, prod, etc.
+      - listOfEnvironments=$(jq -r '.Parameters.PipelineEnvironments + "," + .Parameters.ReleaseEnvironments | gsub(" "; "") | split(",") | .[]' $CODEBUILD_SRC_DIR/Phoenix/template-ssm-globals-macro-params.json)
       - |-
-        for functionName in $listOfLambdaFunctions
+        for environmentName in $listOfEnvironments
+        do
+          echo ==== ENVIRONMENT: $environmentName ====
+
+          # SSM resources
+          echo ===== SSM BUILD =====
+          echo replacing params in the task definition params files.
+          sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-ssm-environments-params-$environmentName.json > $CODEBUILD_SRC_DIR/t-ssm-environments-params-$environmentName.json_temp
+          echo replacing params in the task definition params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-ssm-environments-params-$environmentName.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-ssm-environments-params-$environmentName.json
+
+          # Database (Aurora, DynamoDB)
+          echo ===== DATABASE BUILD =====
+          echo replacing VERSION_ID in the database params files.
+          sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-database-params-$environmentName.json > $CODEBUILD_SRC_DIR/t-database-params-$environmentName.json_temp
+          echo replacing params in the database params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-database-params-$environmentName.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-database-params-$environmentName.json
+
+          # EC2 resources
+          echo ===== EC2 BUILD =====
+          echo replacing params in the task definition params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/Phoenix/template-ec2-params-$environmentName.json codepipeline > $CODEBUILD_SRC_DIR/t-ec2-params-$environmentName.json
+
+          # AWS Cognito
+          echo ===== COGNITO BUILD =====
+          echo replacing VERSION_ID in the api params files.
+          sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-cognito-params-$environmentName.json > $CODEBUILD_SRC_DIR/t-cognito-params-$environmentName.json_temp
+          echo replacing params in the api params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-cognito-params-$environmentName.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-cognito-params-$environmentName.json
+
+          # Lambda
+          echo ===== LAMBDA BUILD =====
+          echo replacing VERSION_ID in the lambda params files.
+          sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-lambda-params-$environmentName.json > $CODEBUILD_SRC_DIR/t-lambda-params-$environmentName.json_temp
+          echo replacing params in the lambda params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-lambda-params-$environmentName.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-lambda-params-$environmentName.json
+
+          # ECS Main Service resources
+          echo ===== DOCKER BUILD =====
+          echo replacing build number in the task definition param files.
+          sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-ecs-task-main-params-$environmentName.json > $CODEBUILD_SRC_DIR/Phoenix/t-ecs-$environmentName.json_temp
+          sed "s/IMAGE_TAG/$IMAGE_TAG/g" $CODEBUILD_SRC_DIR/Phoenix/t-ecs-$environmentName.json_temp > $CODEBUILD_SRC_DIR/t-ecs-task-main-params-$environmentName.json_temp
+          echo replacing params in the task definition params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-ecs-task-main-params-$environmentName.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-ecs-task-main-params-$environmentName.json
+
+          # API Gateway Custom Domain
+          echo ===== API GATEWAY CUSTOM DOMAIN BUILD =====
+          echo replacing params in the api custom domain params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/Phoenix/template-api-custom-domain-params-$environmentName.json codepipeline > $CODEBUILD_SRC_DIR/t-api-custom-domain-params-$environmentName.json
+
+          # V0 API Documentation
+          echo ===== API DOCUMENTATION BUILD =====
+          echo replacing VERSION_ID in the api documentation params files.
+          sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-api-documentation-v0-params-$environmentName.json > $CODEBUILD_SRC_DIR/t-api-documentation-v0-params-$environmentName.json_temp
+          echo replacing params in the api documentation params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-api-documentation-v0-params-$environmentName.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-api-documentation-v0-params-$environmentName.json
+
+          # API Gateway (Changes current API at HEAD, but does not deploy the API distrubtion to the API Endpoint)
+          echo ===== API GATEWAY BUILD =====
+          echo replacing VERSION_ID in the api params files.
+          sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-api-params-$environmentName.json > $CODEBUILD_SRC_DIR/t-api-params-$environmentName.json_temp
+          echo replacing params in the api params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-api-params-$environmentName.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-api-params-$environmentName.json
+
+          # API Gateway Deployment
+          echo ===== API GATEWAY DEPLOYMENT BUILD =====
+          echo replacing VERSION_ID in the api params files.
+          sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-api-deployment-params-$environmentName.json > $CODEBUILD_SRC_DIR/t-api-deployment-params-$environmentName.json_temp
+          echo replacing params in the api params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-api-deployment-params-$environmentName.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-api-deployment-params-$environmentName.json
+
+          # Cognito Internals (Additional configuration for the Cognito API that isn't easily configured via CloudFormation)
+          echo ===== COGNITO INTERNALS BUILD =====
+          echo replacing VERSION_ID in the cognito params files.
+          sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-cognito-internals-params-$environmentName.json > $CODEBUILD_SRC_DIR/t-cognito-internals-params-$environmentName.json_temp
+          echo replacing params in the cognito params files.
+          python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-cognito-internals-params-$environmentName.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-cognito-internals-params-$environmentName.json
+        done
+      - # Copy all templates to codebuild source directory
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-ssm-environments.json > $CODEBUILD_SRC_DIR/template-ssm-environments.json
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-database.json > $CODEBUILD_SRC_DIR/template-database.json
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-ec2.json > $CODEBUILD_SRC_DIR/template-ec2.json
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-cognito.json > $CODEBUILD_SRC_DIR/template-cognito.json
+
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-ecs-task.json > $CODEBUILD_SRC_DIR/template-ecs-task.json
+      - echo Building the Docker image from the Dockerfile.
+      - docker build -t $MAIN_REPOSITORY_URI:$IMAGE_TAG $CODEBUILD_SRC_DIR/Phoenix/ecs
+
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-lambda.json > $CODEBUILD_SRC_DIR/template-lambda.json
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-api-custom-domain.json > $CODEBUILD_SRC_DIR/template-api-custom-domain.json
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-api-documentation.json > $CODEBUILD_SRC_DIR/template-api-documentation.json
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-api.json > $CODEBUILD_SRC_DIR/template-api.json
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-api-deployment.json > $CODEBUILD_SRC_DIR/template-api-deployment.json
+      - sed "s/PROJECTNAMELambdaMacro/${PROJECT_NAME}LambdaMacro/g" $CODEBUILD_SRC_DIR/Phoenix/template-cognito-internals.json > $CODEBUILD_SRC_DIR/template-cognito-internals.json
+
+      - # Upload the Python Lambda functions
+      - listOfPythonLambdaFunctions='projects api_internals password_generator delete_network_interface cognito_internals alb_listener_rule proxy delete_s3_files'
+      - |-
+        for functionName in $listOfPythonLambdaFunctions
         do
           mkdir -p $CODEBUILD_SRC_DIR/Phoenix/builds/$functionName
           cp -rf $CODEBUILD_SRC_DIR/Phoenix/lambda/$functionName/* $CODEBUILD_SRC_DIR/Phoenix/builds/$functionName/
@@ -69,60 +131,62 @@ phases:
           cd $CODEBUILD_SRC_DIR
           rm -rf $CODEBUILD_SRC_DIR/Phoenix/builds
         done
-      - # API Gateway (Changes current API at HEAD, but does not deploy the API distrubtion to the API Endpoint)
-      - echo ===== API GATEWAY BUILD =====
-      - echo replacing VERSION_ID in the api params files.
-      - sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-api-params-testing.json > $CODEBUILD_SRC_DIR/t-api-params-testing.json_temp
-      - sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-api-params-prod.json > $CODEBUILD_SRC_DIR/t-api-params-prod.json_temp
-      - echo replacing params in the api params files.
-      - python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-api-params-testing.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-api-params-testing.json
-      - python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-api-params-prod.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-api-params-prod.json
-      - cp $CODEBUILD_SRC_DIR/Phoenix/template-api.json $CODEBUILD_SRC_DIR
-      - # API Gateway Deployment (Deploys the current API configuration to the API Endpoint)
-      - echo ===== API GATEWAY DEPLOYMENT BUILD =====
-      - echo replacing VERSION_ID in the api deployment params files.
-      - sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-api-deployment-params-testing.json > $CODEBUILD_SRC_DIR/t-api-deployment-params-testing.json_temp
-      - sed "s/VERSION_ID/$VERSION_ID/g" $CODEBUILD_SRC_DIR/Phoenix/template-api-deployment-params-prod.json > $CODEBUILD_SRC_DIR/t-api-deployment-params-prod.json_temp
-      - echo replacing params in the api deployment params files.
-      - python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-api-deployment-params-testing.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-api-deployment-params-testing.json
-      - python $CODEBUILD_SRC_DIR/Phoenix/parameters_generator.py $CODEBUILD_SRC_DIR/t-api-deployment-params-prod.json_temp codepipeline > $CODEBUILD_SRC_DIR/t-api-deployment-params-prod.json
-      - # Get the current API Gateway Deployment template from the stack, compare, and generate a new template.
-      - # We need to generate 2 differnt templates (NOT param templates) for testing and prod.
-      - # The reason for this is because these two templates will actually have different numbers of API deployment resources.
-      - python $CODEBUILD_SRC_DIR/Phoenix/api_gateway_deployment_rotator.py $CODEBUILD_SRC_DIR/Phoenix/template-api-deployment-params-testing.json > $CODEBUILD_SRC_DIR/template-api-deployment-testing.json
-      - python $CODEBUILD_SRC_DIR/Phoenix/api_gateway_deployment_rotator.py $CODEBUILD_SRC_DIR/Phoenix/template-api-deployment-params-prod.json > $CODEBUILD_SRC_DIR/template-api-deployment-prod.json
+      - # Upload the NodeJS Lambda functions
+      - listOfNodeJSLambdaFunctions='vpc_proxy'
+      - |-
+        for functionName in $listOfNodeJSLambdaFunctions
+        do
+          mkdir -p $CODEBUILD_SRC_DIR/Phoenix/builds/$functionName
+          cp -rf $CODEBUILD_SRC_DIR/Phoenix/lambda/$functionName/* $CODEBUILD_SRC_DIR/Phoenix/builds/$functionName/
+          cd $CODEBUILD_SRC_DIR/Phoenix/builds/$functionName/
+          zip -r lambda_function.zip ./*
+          aws s3 cp lambda_function.zip s3://$LAMBDA_BUCKET_NAME/$VERSION_ID/$functionName/
+          cd $CODEBUILD_SRC_DIR
+          rm -rf $CODEBUILD_SRC_DIR/Phoenix/builds
+        done
   post_build:
     commands:
       - echo Build completed on `date`
-      - # Notify Gitlab and alter t-ecs-params-template.json for merge request ecs deploy if certain environment variables are present (see the code for details)
-      - python $CODEBUILD_SRC_DIR/Phoenix/merge_request_codebuild.py build
+      - # Manipulate CodeBuild artifacts if this is a merge request build
+      - python $CODEBUILD_SRC_DIR/Phoenix/pull_request_codebuild.py build
       - # Push docker files
       - echo Pushing the Docker images...
-      - docker push $REPOSITORY_URI:latest
-      - docker push $REPOSITORY_URI:$IMAGE_TAG
-      - echo Writing image definitions file...
+      - docker push $MAIN_REPOSITORY_URI:$IMAGE_TAG
 artifacts:
     files:
-      - # Gitlab config file which will be picked up my Lambda if this is a merge request build.
-      - gitlab.json
+      - # Gitlab config files which will be picked up my Lambda if this is a merge request build.
+      - github.json
+      - gitlab-release.json
+      - # Database (Aurora, DynamoDB)
+      - template-ssm-environments.json
+      - t-ssm-environments-params-*.json
       - # Database (Aurora, DynamoDB)
       - template-database.json
-      - t-database-params-testing.json
-      - t-database-params-prod.json
-      - # Docker/ECS
-      - template-ecs.json
-      - t-ecs-params-testing.json # Note: this file may have been altered by merge_request_codebuild.py if this is a merge request build.
-      - t-ecs-params-prod.json
+      - t-database-params-*.json
+      - # ECS
+      - template-ec2.json
+      - t-ec2-params-*.json
       - # Lambda
       - template-lambda.json
-      - t-lambda-params-testing.json
-      - t-lambda-params-prod.json
+      - t-lambda-params-*.json
+      - # ECS Main Task
+      - template-ecs-task.json
+      - t-ecs-task-main-params-*.json
+      - # Cognito
+      - template-cognito.json
+      - t-cognito-params-*.json
+      - # API Gateway Custom Domain
+      - template-api-custom-domain.json
+      - t-api-custom-domain-params-*.json
+      - # V0 API Documentation
+      - template-api-documentation.json
+      - t-api-documentation-v0-params-*.json
       - # API Gateway
       - template-api.json
-      - t-api-params-testing.json
-      - t-api-params-prod.json
+      - t-api-params-*.json
       - # API Gateway Deployment
-      - template-api-deployment-testing.json
-      - template-api-deployment-prod.json
-      - t-api-deployment-params-testing.json
-      - t-api-deployment-params-prod.json
+      - template-api-deployment.json
+      - t-api-deployment-params-*.json
+      - # Cognito Internals
+      - template-cognito-internals.json
+      - t-cognito-internals-params-*.json

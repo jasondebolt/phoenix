@@ -1,0 +1,22 @@
+  {
+  "Parameters": {
+    "OrganizationName": "acme",
+    "ProjectName": "foo",
+    "GitRepoName": "foo",
+    "GitRootProjectBranch": "master",
+    "GitCurrentProjectBranch": "master",
+    "GitHubOrganization": "acme",
+    "Domain": "foo.acme.com",
+    "HostedZoneId": "{YourRoute53HostedZoneId}",
+    "KeyPairName": "us-east-1-{your-account-id",
+    "ProjectDescription": "The Foo project.",
+    "NotificationEmail": "ops@acme.com",
+    "IAMRole": "arn:aws:iam::{your-account-id}:role/FooAdmins",
+    "CodeBuildDockerImage": "{your-account-id}.dkr.ecr.us-east-1.amazonaws.com/scala-build:0.1.1",
+    "NodeJSBuildDockerImage": "{your-account-id}.dkr.ecr.us-east-1.amazonaws.com/nodejs:10.1.0",
+    "GitURL": "https://github.com",
+    "PipelineEnvironments": "testing, e2e, prod",
+    "ReleaseEnvironments": "",
+    "Version": "VERSION_ID"
+  }
+}

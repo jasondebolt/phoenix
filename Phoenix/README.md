@@ -1,25 +1,22 @@
 # Phoenix Microservice
 A full CI/CD solution for continuously building and deploying RDS, ECS, Lambda, and API Gateway resources.
-
 <img src="/Phoenix/images/logo.png" height="70px"/>
 
 ![Pipeline](/Phoenix/images/pipeline_1a.png)
 ![Pipeline](/Phoenix/images/pipeline_1b.png)
 
+
 #### What ships with Phoenix?
-##### Phoenix Microservice (template-microservice.json)
+##### Phoenix Microservice (template-pipeline.json)
 * Creates a local CodeCommit repo which stores all of your source code, buildspecs, templates, etc.
 * Creates an ECR repo for your project's Docker images.
 * Creates an AWS CodePipeline which will CI/CD any changes pushed to master.
 * Creates an S3 bucket to store Lambda functions.
 * Creates an S3 bucket to store load balancer logs.
-* Creates an S3 bucket to store encrypted secrets using KMS.
-* Creates an S3 bucket to store encrypted secrets using KMS.
 * Creates an S3 bucket to store CodePipeline artifacts.
 * Creates an S3 bucket to store CodeBuild artifacts.
 * Creates an SNS topic which triggers on master branch commits.
 * Creates an SNS topic which triggers on master branch commits.
-* Creates a KMS key and KMS alias.
 * Creates a CodePipeline service role.
 * Creates a CodeBuild service role.
 * Creates a CodePipeline approval SNS topic to notify pipeline approvers.
@@ -50,7 +47,7 @@ For each environment (dev, testing, prod), and additional developer environments
 * Creates a DNS record set to map DB address to a user friendly URL.
 * Creates ingress rules to allow Database Migration Service to access from specific CIDR blocks.
 
-##### Phoenix ECS (template-ecs.json)
+##### Phoenix EC2 (template-ec2.json)
 For each environment (dev, testing, prod), and additional developer environments:
 * Creates an ECS Cluster.
 * Creates an ECS Task Definition.
@@ -94,9 +91,6 @@ For each environment (dev, testing, prod), and additional developer environments
 * Update all of the params....json files with your project info
 * The ProjectName should match the name of this Git repo. Use all lower case, optionally with dashes, keep it short.
 ```
-cd Phoenix
-$ python search_and_replace.py . 123456789 {your AWS AccountId}
-$ python search_and_replace.py . acme {name of your project}
 
 Make sure there are no dashes in the DatabaseNamePrefix or MasterUsername parameters in the
 template-database-params JSON files.
@@ -105,12 +99,12 @@ template-database-params JSON files.
 ```
 cd Phoenix
 ./deploy-vpc.sh create
-./deploy-microservice.sh create
-./deploy-database-dev.sh create
-./deploy-ecs-dev.sh create ecs
-./deploy-lambda-dev.sh create
-./deploy-api-dev.sh create
-./deploy-api-deployment-dev.sh create
+./deploy-pipeline.sh create
+./deploy-dev-database.sh create
+./deploy-dev-ec2.sh create ecs
+./deploy-dev-lambda.sh create
+./deploy-dev-api.sh create
+./deploy-dev-api-deployment.sh create
 ```
 * If all of the above stacks complete, push to the master branch of the CodeCommit repo that was created.
 ```
@@ -122,18 +116,18 @@ git push origin master
 * After you've pushed your changes, open the CodePipeline and watch it go.
 
 ### Creating and updating a microservice project
-* Update the template-microservice file with your project details.
+* Update the template-pipeline file with your project details.
 ```
 cd Phoenix
-./deploy-microservice.sh create
-./deploy-microservice.sh update
+./deploy-pipeline.sh create
+./deploy-pipeline.sh update
 ```
 
 ### Deploying a local Docker container to the Dev ECS cluster (skips the pipeline)
 * Update all of the template-ecs-{environment} param files with your information.
 * Don't forget to specify which port you want to open on the container in the ecs param files.
 ```
-./deploy-ecs-dev.sh [create | update] [path location of folder containing dockerfile]
+./deploy-dev-ec2.sh [create | update] [path location of folder containing dockerfile]
 ```
 
 ### Deploying the entire microservice to production.
@@ -151,3 +145,22 @@ trumps all external conventions or style guides.
 
 #### Stack Exports
 * Use the pattern of {ProjectName}-{AWS service or function}-{Environment}-{Resource}. Here's an example:
+```
+"Outputs": {
+    "EndpointAddress": {
+      "Export": {
+        "Name": {
+          "Fn::Join": ["-", [
+            {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+            "database",
+            {"Ref": "Environment"},
+            "EndpointAddress"
+          ]]
+        }
+      },
+      "Value": {
+        "Fn::GetAtt": ["RDSCluster", "Endpoint.Address"]
+      }
+    }
+  }
+```

@@ -1,0 +1,8 @@
+{
+  "Parameters": {
+    "Environment": "testing",
+    "UserPoolName": "userpool",
+    "UserPoolClientName": "userpool",
+    "Version": "VERSION_ID"
+  }
+}
