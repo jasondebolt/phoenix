@@ -262,7 +262,7 @@ Where 111111111111 is your AWS account ID.
 1. Create a blank repo in GitHub with an all lowercase repo name.
     * The name of the repo should be short and lowercase, ideally having the same name as the project name.
 2. Make sure to add this repo under the correct organization
-3. Add both the "codebuild-users" and "devops-and-it" groups as admin users.
+3. Add the group that includes the GitHub user whose access token is used to create webhooks for your project.
 4. Clone the this repo and change the remote path
     * git remote -v
     * git remote remove origin
