@@ -52,12 +52,6 @@
                     ":root"
                   ]]},
                   {"PhoenixSSM": "/microservice/{ProjectName}/global/iam-role"},
-                  {"Fn::Join": ["", [
-                    "arn:aws:iam::",
-                    {"Ref": "AWS::AccountId"},
-                    ":role/",
-                    "PhoenixUIAdmins"
-                  ]]},
                   {"Fn::If": [
                     "IsProd",
                     { "Ref" : "AWS::NoValue" },

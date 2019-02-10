@@ -39,7 +39,6 @@ AWS_REGION=`aws configure get region`
 CLOUDFORMATION_ROLE=$(jq -r '.Parameters.IAMRole' template-ssm-globals-macro-params.json)
 ORGANIZATION_NAME=$(jq -r '.Parameters.OrganizationName' template-ssm-globals-macro-params.json)
 PROJECT_NAME=$(jq -r '.Parameters.ProjectName' template-ssm-globals-macro-params.json)
-LAMBDA_BUCKET_NAME=$ORGANIZATION_NAME-$PROJECT_NAME-lambda
 
 ENVIRONMENT=`jq -r '.Parameters.Environment' $ECS_PARAM_FILE`
 STACK_NAME=$PROJECT_NAME-ecs-$TASK_FAMILY-$ENVIRONMENT
@@ -50,20 +49,6 @@ ECR_REPO=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME:$IMAGE_TA
 
 VERSION_ID=$ENVIRONMENT-`date '+%Y-%m-%d-%H%M%S'`
 CHANGE_SET_NAME=$VERSION_ID
-
-# Upload the Python Lambda functions
-listOfPythonLambdaFunctions='password_generator'
-for functionName in $listOfPythonLambdaFunctions
-do
-  mkdir -p builds/$functionName
-  cp -rf lambda/$functionName/* builds/$functionName/
-  cd builds/$functionName/
-  pip install -r requirements.txt -t .
-  zip -r lambda_function.zip ./*
-  aws s3 cp lambda_function.zip s3://$LAMBDA_BUCKET_NAME/$VERSION_ID/$functionName/
-  cd ../../
-  rm -rf builds
-done
 
 # Replace the VERSION_ID string in the dev params file with the $VERSION_ID variable
 sed "s/VERSION_ID/$VERSION_ID/g" $ECS_PARAM_FILE > temp1.json

@@ -1,0 +1,35 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - nohup /usr/local/bin/dockerd --host=unix:///var/run/docker.sock --host=tcp://127.0.0.1:2375 --storage-driver=overlay&
+      - timeout 15s sh -c "until docker info; do echo .; sleep 1; done"
+      - pip install requests
+  pre_build:
+    commands:
+      - # We set AWS_ACCOUNT_ID as an enviornment variable in the CloudFormation template which creates this CodeBuild job.
+      - # We assume that the region that the CodeBuild nodes are running (AWS_DEFAULT_REGION) is the same as all other stack resource.
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
+      - MAIN_REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$PROJECT_NAME-main
+      - VERSION_ID=v_$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=$VERSION_ID
+  build:
+    commands:
+      - python $CODEBUILD_SRC_DIR/Phoenix/validate_template.py
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - # Manipulate CodeBuild artifacts if this is a merge request build
+      - python $CODEBUILD_SRC_DIR/Phoenix/merge_request_codebuild.py build
+      - # Manipulate CodeBuild artifacts if this is a release build
+      - python $CODEBUILD_SRC_DIR/Phoenix/release_codebuild.py build
+      - # Push docker files
+      - echo Pushing the Docker images...
+      - docker push $MAIN_REPOSITORY_URI:latest
+      - docker push $MAIN_REPOSITORY_URI:$IMAGE_TAG
+artifacts:
+    files:
+      - $CODEBUILD_SRC_DIR/Phoenix/validate_template.py

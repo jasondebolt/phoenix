@@ -19,12 +19,6 @@ from requests import Request, Session
 ssm_client = boto3.client('ssm')
 secretsmanager_client = boto3.client('secretsmanager')
 
-def get_github_secret():
-    response = secretsmanager_client.get_secret_value(
-        SecretId='GitHubPullRequestSecret'
-    )
-    return response['SecretString']
-
 def put_password_to_ssm(parameter_name, parameter_description, key_id, password):
     """Puts the password to SSM Parameter Store."""
     print('Putting password to parameter store')

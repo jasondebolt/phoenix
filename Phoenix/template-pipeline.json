@@ -173,7 +173,13 @@
             {
               "Name" : "GITHUB_ACCESS_TOKEN",
               "Type" : "PARAMETER_STORE",
-              "Value" : "/global/gitlab/codebuild/access-token"
+              "Value": {"Fn::Join": ["/", [
+                "/microservice",
+                {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+                "global",
+                "github",
+                "access-token"
+              ]]}
             },
             {
               "Name" : "GIT_URL",
@@ -268,7 +274,13 @@
             {
               "Name" : "GITHUB_UNIT_TEST_ACCESS_TOKEN",
               "Type" : "PARAMETER_STORE",
-              "Value" : "/global/gitlab/codebuild/unit-test-access-token"
+              "Value": {"Fn::Join": ["/", [
+                "/microservice",
+                {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+                "global",
+                "github",
+                "access-token"
+              ]]}
             },
             {
               "Name" : "GIT_URL",
@@ -367,7 +379,13 @@
             {
               "Name" : "GITHUB_LINT_ACCESS_TOKEN",
               "Type" : "PARAMETER_STORE",
-              "Value" : "/global/gitlab/codebuild/lint-access-token"
+              "Value": {"Fn::Join": ["/", [
+                "/microservice",
+                {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
+                "global",
+                "github",
+                "access-token"
+              ]]}
             },
             {
               "Name" : "GIT_URL",

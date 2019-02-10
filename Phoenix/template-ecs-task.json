@@ -257,7 +257,6 @@
     },
     "ECSTaskDefinition": {
       "Type": "AWS::ECS::TaskDefinition",
-      "DependsOn": ["RDSPasswordRetriever"],
       "Properties": {
         "RequiresCompatibilities": [
           { "Ref": "LaunchType" }
@@ -344,12 +343,6 @@
                     ]]
                   }
                 }
-              },
-              {
-                "Name": "RDS_PASSWORD",
-                "Value": {
-                  "Fn::GetAtt": ["RDSPasswordRetriever", "Password"]
-                }
               }
             ],
             "Image": {
@@ -394,51 +387,6 @@
             "Essential": { "Ref": "Essential" }
           }
         ]
-      }
-    },
-    "LambdaPasswordGenerator": {
-      "Type": "AWS::Lambda::Function",
-      "Properties": {
-        "Handler": "lambda_function.lambda_handler",
-        "Role": {"PhoenixSSM": "/microservice/{ProjectName}/global/iam-role"},
-        "Code": {
-          "S3Bucket" : {"PhoenixSSM": "/microservice/{ProjectName}/global/lambda-bucket-name"},
-          "S3Key": {
-            "Fn::Join": ["/", [
-              {"Ref": "Version"},
-              "password_generator",
-              "lambda_function.zip"
-            ]]
-          }
-        },
-        "Runtime": "python3.6",
-        "Timeout": "25"
-      }
-    },
-    "RDSPasswordRetriever": {
-      "Type": "Custom::PasswordRetriever",
-      "DependsOn": "LambdaPasswordGenerator",
-      "Properties": {
-        "ServiceToken": {
-          "Fn::GetAtt": ["LambdaPasswordGenerator", "Arn"]
-        },
-        "Type": "decrypt",
-        "PasswordLength": 20,
-        "KMSKeyId": "alias/aws/ssm",
-        "ParameterName": {"Fn::Join": ["/", [
-          "/microservice",
-          {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
-          {"Ref": "DBEnvironment"},
-          "aurora-admin-password"
-        ]]},
-        "ParameterDescription": {"Fn::Join": ["", [
-          "Password for the ",
-          {"PhoenixSSM": "/microservice/{ProjectName}/global/project-name"},
-          {"Ref": "DBEnvironment"},
-          " Aurora DB from ECS ",
-          {"Ref": "Environment"},
-          " stack."
-        ]]}
       }
     },
     "ECSService": {

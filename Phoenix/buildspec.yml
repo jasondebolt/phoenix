@@ -18,6 +18,8 @@ phases:
       - IMAGE_TAG=$VERSION_ID
   build:
     commands:
+      - echo Validate aws templates
+      - python $CODEBUILD_SRC_DIR/Phoenix/validate_template.py
       - echo Build started on `date`
       - # testing, prod, etc.
       - listOfEnvironments=$(jq -r '.Parameters.PipelineEnvironments + "," + .Parameters.ReleaseEnvironments | gsub(" "; "") | split(",") | .[]' $CODEBUILD_SRC_DIR/Phoenix/template-ssm-globals-macro-params.json)
