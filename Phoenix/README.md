@@ -260,7 +260,7 @@ Where 111111111111 is your AWS account ID.
 
 #### Create a repo in github
 1. Create a blank repo in GitHub with an all lowercase repo name.
-    * The name of the repo should be short and lowercase, ideally having the same name as the project name.
+    * The name of the repo should be short and lowercase with no special characters (dashes are ok).
 2. Make sure to add this repo under the correct organization
 3. Add the group that includes the GitHub user whose access token is used to create webhooks for your project.
 4. Clone the this repo and change the remote path
@@ -277,7 +277,7 @@ The project wide configuration values include, but aren't limited to, the follow
 * Organization name
     * This would typically be the name of the company/organization associated with the repo.
 * Project name
-    * The name of your project.
+    * The name of your project. (Use call lowercase, no dashes or special characters)
 * Git repo name
     * The name of your git repository in GitHub.
 * Git root project branch
@@ -832,7 +832,7 @@ The project wide configuration values include, but aren't limited to, the follow
 * Organization name
     * This would typically be the name of the company/organization associated with the repo.
 * Project name
-    * The name of your project.
+    * The name of your project. (User all lowercase, no dashes).
 * Git repo name
     * The name of your git repository in GitHub.
 * Git root project branch
